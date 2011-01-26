@@ -129,6 +129,13 @@ sub Run{
                             		$self->irc_priv_print("usage: !rebuild <all|some>");
                             	}
                             }
+			    case "!status" {
+                            	if ($arg) {
+                            		$q_db->enqueue(['irc','status',$arg]);
+                            	} else {
+                            		$self->irc_priv_print("usage: !status <package>");
+                            	}
+                            }
                         }
                     }
                 }

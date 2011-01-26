@@ -99,6 +99,9 @@ sub Run{
             		q_irc->enqueue(['db','print','Usage: !rebuild <all|some>']);
             	}
             }
+	    case "status" {
+		$self->status(@{$orders}[2]);
+	    }
         }
     }
     ##
@@ -180,6 +183,33 @@ sub failed{
     my $self = shift;
 	my $ret = ($self->{dbh}->selectrow_array("select count(*) from package where fail = 1"))[0] || 0;
     return $ret;
+}
+
+sub status{
+    my ($self,$package) = @_;
+    if( defined($package)){
+	if( $package ne ''){
+	    my $sth = $self->{dbh}->prepare("select name,repo,done,fail,builder,git,abs from package where package = ?");
+	    $sth->execute($package);
+	    my $ar = $sth->fetchall_arrayref();
+	    if( scalar(@{$ar}) ){ # 1 or more
+		foreach my $r (@{$ar}){
+		    my ($name,$repo,$done,$fail,$builder,$git,$abs)= @{$r};
+		    my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
+		    if( $builder ne '' && $state eq 'unbuilt'){
+			$state = 'building';
+		    }
+		    my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
+		    my $status= sprintf("Status of package '%s' : repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
+		    $status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
+		    $q_irc->enqueue(['db','print',$status]);
+		}
+	    }else{ # zilch
+		$q_irc->enqueue(['db','print','could not find package \''.$package.'\'']);
+	    }
+	}
+    }
+    
 }
 
 sub pkg_add {
@@ -359,25 +389,7 @@ sub update {
 		}
 	}
 	
-	# build package_depends
-	print "building package_depends..\n";
-	$rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from package");
-	$self->{dbh}->do("delete from package_depends");
-	foreach my $row (@$rows) {
-		my ($id, $depends, $makedepends) = @$row;
-		next if (!$depends && !$makedepends);
-#		next if (!$depends);
-		$depends = "" unless $depends;
-		$makedepends = "" unless $makedepends;
-		my $statement = "insert into package_depends (dependency, package) select distinct package, $id from package_name_provides where name in (";
-		foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
-#		foreach my $name (split(/ /, $depends)) {
-			$name =~ s/(<|=|>).*//;
-			$statement .= "'$name', ";
-		}
-		$statement =~ s/, $/\)/;
-		$self->{dbh}->do("$statement");
-	}
+	$self->rebuild_all;
 }
 
 sub rebuild_all {
