@@ -1,0 +1,12 @@
+--'select distinct name, count(*) from package_name_provides  group by name having count(*) > 1
+--'select  p.id, p.package, np.name, p.done, p.fail from package_name_provides as np inner join package as p on (p.id = np.package) where np.name = 'cron'
+
+select  
+d.package, d.dependency, 
+np.name,
+p.package, p.done
+from package_name_provides as np 
+inner join package_depends as d on (d.dependency = np.package) 
+inner join package as p on (p.id = np.package)
+where 
+np.name = 'cron'
