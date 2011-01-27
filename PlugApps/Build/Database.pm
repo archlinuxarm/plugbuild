@@ -189,7 +189,7 @@ sub status{
     my ($self,$package) = @_;
     if( defined($package)){
 	if( $package ne ''){
-	    my $sth = $self->{dbh}->prepare("select name,repo,done,fail,builder,git,abs from package where package = ?");
+	    my $sth = $self->{dbh}->prepare("select package,repo,done,fail,builder,git,abs from package where package = ?");
 	    $sth->execute($package);
 	    my $ar = $sth->fetchall_arrayref();
 	    if( scalar(@{$ar}) ){ # 1 or more
