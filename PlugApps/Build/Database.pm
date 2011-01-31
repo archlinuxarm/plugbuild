@@ -96,11 +96,19 @@ sub Run{
             	} elsif ($target eq "some") {
             		$self->rebuild_some();
             	} else {
-            		q_irc->enqueue(['db','print','Usage: !rebuild <all|some>']);
+            		$q_irc->enqueue(['db','print','Usage: !rebuild <all|some>']);
             	}
             }
 	    case "status" {
 		$self->status(@{$orders}[2]);
+	    }
+	    case "ready" {
+		my $ready = $self->ready();
+		if( defined($ready) ){
+		    $q_irc->enqueue(['db','print',"Packages waiting to be built: $ready"]);
+		}else{
+		    $q_irc->enqueue(['db','print','ready: unknown error.']);
+		}
 	    }
         }
     }
@@ -158,6 +166,31 @@ sub get_next_package{
         return undef if (!$next_pkg[0]);
         $self->{dbh}->do("update package set start = strftime('%s', 'now') where package = '$next_pkg[1]'");
         return \@next_pkg;
+    }else{
+        return undef;
+    }
+}
+
+sub ready{
+    my $self = shift;
+    
+    if( defined($self->{dbh}) ){
+    	my $sql = "select
+           count(*)
+           from
+           package as p
+            left outer join
+             ( select 
+                 dp.id, dp.package, d.done as 'done'
+                 from package_depends dp
+                 inner join package as d on (d.id = dp.dependency)
+             ) as dp on ( p.id = dp.package)
+             group by p.id
+            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')";
+        my $db = $self->{dbh};
+        my @next_pkg = $db->selectrow_array($sql);
+        return undef if (!$next_pkg[0]);
+        return $next_pkg[0];
     }else{
         return undef;
     }
