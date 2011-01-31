@@ -105,6 +105,7 @@ sub Run{
 	    case "ready" {
 		my $ready = $self->ready();
 		if( defined($ready) ){
+		    $ready = $ready?$ready:"none";
 		    $q_irc->enqueue(['db','print',"Packages waiting to be built: $ready"]);
 		}else{
 		    $q_irc->enqueue(['db','print','ready: unknown error.']);
@@ -189,7 +190,7 @@ sub ready{
             having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')";
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
-        return undef if (!$next_pkg[0]);
+        return undef if (!defined($next_pkg[0]));
         return $next_pkg[0];
     }else{
         return undef;
