@@ -289,7 +289,7 @@ sub update {
 
 	$q_irc->enqueue(['db', 'print', 'Updating git..']);
 	print "update git..\n";
-	system("git --git-dir='$gitroot/.git' --work-tree='..' pull");
+	system("pushd $gitroot; git pull; popd");
 	open FILE, "<$gitroot/packages-to-skip.txt" or die $!;
 	while (<FILE>) {
 		next if ($_ =~ /(^#.*|^\W.*)/);
