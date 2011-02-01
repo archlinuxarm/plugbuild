@@ -176,8 +176,10 @@ sub ready{
     my $self = shift;
     
     if( defined($self->{dbh}) ){
-    	my $sql = "select
-           count(*)
+    	my $sql = "
+	    select count(*) from (
+	    select
+           'blank' as crap
            from
            package as p
             left outer join
@@ -187,7 +189,8 @@ sub ready{
                  inner join package as d on (d.id = dp.dependency)
              ) as dp on ( p.id = dp.package)
              group by p.id
-            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')";
+            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')
+	    ) as xx";
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!defined($next_pkg[0]));
