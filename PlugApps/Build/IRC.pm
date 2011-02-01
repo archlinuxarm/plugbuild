@@ -100,7 +100,7 @@ sub Run{
                                 }
                             }
 			    case "!ready" {
-                            	$q_db->enqueue(['irc','ready']);
+                            	$q_db->enqueue(['irc','ready',$arg]);
                             }
                             case "!update" {
                             	$q_db->enqueue(['irc','update']);

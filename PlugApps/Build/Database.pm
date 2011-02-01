@@ -103,12 +103,21 @@ sub Run{
 		$self->status(@{$orders}[2]);
 	    }
 	    case "ready" {
-		my $ready = $self->ready();
-		if( defined($ready) ){
-		    $ready = $ready?$ready:"none";
-		    $q_irc->enqueue(['db','print',"Packages waiting to be built: $ready"]);
+		my $target = @{$orders}[2];
+		if( $target eq 'detail'){
+		    my $ready = $self->ready_detail();
+		    $q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
+		    if( $ready->[0] > 1){
+			$q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
+		    }
 		}else{
-		    $q_irc->enqueue(['db','print','ready: unknown error.']);
+		    my $ready = $self->ready();
+		    if( defined($ready) ){
+			$ready = $ready?$ready:"none";
+			$q_irc->enqueue(['db','print',"Packages waiting to be built: $ready"]);
+		    }else{
+			$q_irc->enqueue(['db','print','ready: unknown error.']);
+		    }
 		}
 	    }
         }
@@ -195,6 +204,36 @@ sub ready{
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!defined($next_pkg[0]));
         return $next_pkg[0];
+    }else{
+        return undef;
+    }
+}
+
+sub ready_detail{
+    my $self = shift;
+    
+    if( defined($self->{dbh}) ){
+    	my $sql = "select
+           p.repo, p.package
+           from
+           package as p
+            left outer join
+             ( select 
+                 dp.id, dp.package, d.done as 'done'
+                 from package_depends dp
+                 inner join package as d on (d.id = dp.dependency)
+             ) as dp on ( p.id = dp.package)
+             group by p.id
+            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')";
+        my $sth = $self->{dbh}->prepare($sql);
+        $sth->execute();
+	my $res=undef;
+	my $cnt=0;
+	while( my $row = $sth->fetchrow_arrayref() ){
+	    $res.=sprintf(" %s-%s,",$row->[0],$row->[1]);
+	    $cnt++;
+	}
+	return [$cnt,$res];
     }else{
         return undef;
     }
