@@ -389,6 +389,7 @@ sub update {
 			chomp($vars);
 			my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$plugrel,$noautobuild) = split(/\|/, $vars);
 			# new package, different plugrel or version, update, done = 0
+			next unless (defined $plugrel); # no plugrel? no soup!
 			next unless (! defined $db_pkgver || "$plugrel" ne "$db_plugrel" || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			my $is_done = 0;
 			# noautobuild set, assume built, done = 1
