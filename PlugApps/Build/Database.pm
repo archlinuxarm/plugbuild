@@ -427,13 +427,16 @@ sub update {
 				next;
 			}
 			# new package, different version, update, done = 0
-			next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
+			next unless (! defined $db_pkgver);
+			# create work unit here, to repackage abs changes without ver-rel bump
+			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
+			next unless ("$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			print "$repo/$pkg to $pkgver-$pkgrel\n";
 			$self->{dbh}->do("delete from package where package = '$pkg'");
 			$self->{dbh}->do("insert into package (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)",
 				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends);
 			# create work unit package
-			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
+			#`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			$abs_count++;
 		}
 	}
