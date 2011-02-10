@@ -334,14 +334,14 @@ sub pkg_work {
 sub pkg_done {
 	my $self = shift;
     my $package = shift;
-    $self->{dbh}->do("update package set builder = null, done = 1, finish = strftime('%s', 'now') where package = '$package'");
+    $self->{dbh}->do("update package set builder = null, done = 1, fail = 0, finish = strftime('%s', 'now') where package = '$package'");
 }
 
 # set package fail
 sub pkg_fail {
 	my $self = shift;
     my $package = shift;
-    $self->{dbh}->do("update package set builder = null, fail = 1, finish = strftime('%s', 'now') where package = '$package'");
+    $self->{dbh}->do("update package set builder = null, done = 0, fail = 1, finish = strftime('%s', 'now') where package = '$package'");
 }
 
 # unfail package or all
