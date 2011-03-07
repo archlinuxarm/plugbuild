@@ -6,6 +6,7 @@ use DBI;
 use Thread::Queue;
 use Thread::Semaphore;
 use Switch;
+use File::stat;
 
 # we only ever want one instance connected to the database.
 # EVER.
@@ -84,6 +85,10 @@ sub Run{
             }
             case "fail" { # from svc
             	$self->pkg_fail(@{$orders}[2]);
+            }
+            case "unfuck" { # from irc
+            	$self->unfuck();
+            	$q_irc->enqueue(['db', 'print', 'operation unfuck in progress, sir!']);
             }
             case "update" { # generally recv'd from irc
             	$self->update();
@@ -349,11 +354,44 @@ sub pkg_unfail {
 	my $self = shift;
 	my $package = shift;
 	if ($package eq "all") {
-		$self->{dbh}->do("update package set fail = 0, done = 0 where fail = 1");
+		$self->{dbh}->do("update package set fail = 0, done = 0, builder = null where fail = 1");
 	} else {
-		$self->{dbh}->do("update package set fail = 0, done = 0 where package = '$package'");
+		$self->{dbh}->do("update package set fail = 0, done = 0, builder = null where package = '$package'");
 	}
 }
+
+sub unfuck {
+	my $self = shift;
+	my $reporoot = $self->{packaging}->{repo}->{root};
+	my $count = 0;
+	
+	my $rows = $self->{dbh}->selectall_arrayref("select repo, package, pkgname, pkgver, pkgrel from package where done = 0");
+	
+	foreach my $row (@$rows) {
+		my ($repo, $package, $pkgname, $pkgver, $pkgrel) = @$row;
+		my $namecount = split(/ /, $pkgname);
+		foreach my $name (split(/ /, $pkgname)) {
+			my $namebase = "$reporoot/$repo/$name-$pkgver-$pkgrel";
+			if (-e "$namebase-arm.pkg.tar.xz") {
+				if (stat("$namebase-arm.pkg.tar.xz")->mtime gt "1295325270") {
+					$namecount--;
+				}
+			} elsif (-e "$namebase-any.pkg.tar.xz") {
+				if (stat("$namebase-any.pkg.tar.xz")->mtime gt "1295325270") {
+					$namecount--;
+				}
+			} else {
+				last;
+			}
+		}
+		if ($namecount == 0) {
+			$self->{dbh}->do("update package set fail = 0, done = 1 where package = '$package'");
+			$count++;
+		}
+	}
+	$q_irc->enqueue(['db', 'print', "unfucked $count packages"]);
+}
+		
 
 sub update {
 	my $self = shift;
