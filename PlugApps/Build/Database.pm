@@ -69,10 +69,11 @@ sub Run{
                 }
             }
             case "add" { # from svc
-            	if ($self->pkg_add(@{$orders}[2])) {
-            		$q_svc->enqueue(['db','add','add','FAIL']);
+				my $pkg = @{$orders}[2];
+            	if ($self->pkg_add($pkg)) {
+            		$q_svc->enqueue(['db','add',$pkg,'FAIL']);
             	} else {
-            		$q_svc->enqueue(['db','add','add','OK']);
+            		$q_svc->enqueue(['db','add',$pkg,'OK']);
             	}
             }
             case "unfail" { # from irc
@@ -193,19 +194,19 @@ sub status{
 	    $sth->execute($package);
 	    my $ar = $sth->fetchall_arrayref();
 	    if( scalar(@{$ar}) ){ # 1 or more
-		foreach my $r (@{$ar}){
-		    my ($name,$repo,$done,$fail,$builder,$git,$abs)= @{$r};
-		    my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
-		    if( $builder ne '' && $state eq 'unbuilt'){
-			$state = 'building';
-		    }
-		    my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
-		    my $status= sprintf("Status of package '%s' : repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
-		    $status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
-		    $q_irc->enqueue(['db','print',$status]);
-		}
+			foreach my $r (@{$ar}){
+				my ($name,$repo,$done,$fail,$builder,$git,$abs)= @{$r};
+				my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
+				if( $builder ne '' && $state eq 'unbuilt'){
+					$state = 'building';
+				}
+				my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
+				my $status= sprintf("Status of package '%s' : repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
+				$status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
+				$q_irc->enqueue(['db','print',$status]);
+			}
 	    }else{ # zilch
-		$q_irc->enqueue(['db','print','could not find package \''.$package.'\'']);
+			$q_irc->enqueue(['db','print','could not find package \''.$package.'\'']);
 	    }
 	}
     }

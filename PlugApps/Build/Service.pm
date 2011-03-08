@@ -32,6 +32,9 @@ sub Run {
     if( $self->open ){
         print "SvcOpen\n";
         my $done = 0;
+		## non-blocking next.
+		my %wait_next; # will be keyed by builder name
+		my %wait_add; # will be keyed by package detail
         while( !$done ){
             ## check queue of messages
             while(my $qm = $q_svc->dequeue_nb()){
@@ -41,6 +44,28 @@ sub Run {
                         $done = 1;
                         last;
                     }
+					case "next" {
+						my ($who,$response,$what) = @{$qm}[2,3,4];
+						print "   -> builder $who: $response\n";
+						my $cs = $wait_next{$who};
+						print $cs "$response\n";
+						if ($response ne "FAIL") {
+							$q_irc->enqueue(['svc','print',"[new] builder: $who - package: $response"]);
+						} else {
+							$q_irc->enqueue(['svc','print',"[new] found no package to issue $who"]);
+						}
+						delete $wait_next{$who};
+					}
+					case "add" {
+						my ($pkg,$response,$what) = @{$qm}[2,3,4];
+						my $cs = $wait_add{$pkg};
+						if ($response eq "FAIL") {
+							print $cs "FAIL\n";
+						} else {
+							print $cs "OK\n";
+						}
+						delete $wait_add{$pkg};
+					}
                 }
             }
             ## handle clients
@@ -84,28 +109,17 @@ sub Run {
                                 $q_db->enqueue(['svc','build']);
                             }
                             case "new" {	# new!<builder>
-                                $q_db->enqueue(['svc','next',$data]);
-                                my ($response,$what) = @{$self->db_seek_response('next',$data)}[3,4];
-                                print "   -> builder $data: $response\n";
-                                print $rh "$response\n";
-                                if ($response ne "FAIL") {
-                                    #my ($repo) = (split(/-/, $response))[0];
-                                    #my ($pkg) = (split(/-/, (split(/!/, $response))[0], 2))[1];
-                                    $q_irc->enqueue(['svc','print',"[new] builder: $data - package: $response"]);
-                                    #irc_priv_print "[new] builder: $data - package: $repo/$pkg";
-                                } else {
-                                    $q_irc->enqueue(['svc','print',"[new] found no package to issue $data"]);
-                                }
+                                if( !exists( $wait_next{$data})){
+									$q_db->enqueue(['svc','next',$data]);
+									$wait_next{$data}=$rh;
+								}
                             }
                             case "add" {	# add!<repo>|<package>|<filename.tar.xz>|<md5sum>
                                 print "   -> adding package: $data\n";
-                                $q_db->enqueue(['svc','add',$data]);
-                                my ($response, $what) = @{$self->db_seek_response('add','add')}[3,4];
-                                if ($response eq "FAIL") {
-                                    print $rh "FAIL\n";
-                                } else {
-                                    print $rh "OK\n";
-                                }
+								if( !exists( $wait_next{$data})){
+									$q_db->enqueue(['svc','add',$data]);
+									$wait_add{$data}=$rh;
+								}
                             }
                             case "done" {	# done!<package>
                                 print "   -> package done: $data\n";
@@ -122,6 +136,15 @@ sub Run {
                         }
                     } else { # client disconnect
                         print "  -> dropped client\n";
+						## have to clear out %wait_next
+						foreach my $k (keys %wait_next){
+							delete $wait_next{$k} if($wait_next{$k} == $rh);
+						}
+						## have to clear out %wait_add
+						foreach my $k (keys %wait_add){
+							delete $wait_add{$k} if($wait_add{$k} == $rh);
+						}
+						## close the socket.
                         $self->{silo}->remove($rh);
                         CORE::close($rh);
                     }
