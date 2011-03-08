@@ -6,6 +6,7 @@ use DBI;
 use Thread::Queue;
 use Thread::Semaphore;
 use Switch;
+use File::stat;
 
 # we only ever want one instance connected to the database.
 # EVER.
@@ -86,6 +87,10 @@ sub Run{
             case "fail" { # from svc
             	$self->pkg_fail(@{$orders}[2]);
             }
+            case "unfuck" { # from irc
+            	$self->unfuck();
+            	$q_irc->enqueue(['db', 'print', 'operation unfuck in progress, sir!']);
+            }
             case "update" { # generally recv'd from irc
             	$self->update();
             	$q_irc->enqueue(['db', 'update', 'done']);
@@ -97,11 +102,29 @@ sub Run{
             	} elsif ($target eq "some") {
             		$self->rebuild_some();
             	} else {
-            		q_irc->enqueue(['db','print','Usage: !rebuild <all|some>']);
+            		$q_irc->enqueue(['db','print','Usage: !rebuild <all|some>']);
             	}
             }
 	    case "status" {
 		$self->status(@{$orders}[2]);
+	    }
+	    case "ready" {
+		my $target = @{$orders}[2];
+		if( $target eq 'detail'){
+		    my $ready = $self->ready_detail();
+		    $q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
+		    if( $ready->[0] > 1){
+			$q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
+		    }
+		}else{
+		    my $ready = $self->ready();
+		    if( defined($ready) ){
+			$ready = $ready?$ready:"none";
+			$q_irc->enqueue(['db','print',"Packages waiting to be built: $ready"]);
+		    }else{
+			$q_irc->enqueue(['db','print','ready: unknown error.']);
+		    }
+		}
 	    }
         }
     }
@@ -164,6 +187,64 @@ sub get_next_package{
     }
 }
 
+sub ready{
+    my $self = shift;
+    
+    if( defined($self->{dbh}) ){
+    	my $sql = "
+	    select count(*) from (
+	    select
+           'blank' as crap
+           from
+           package as p
+            left outer join
+             ( select 
+                 dp.id, dp.package, d.done as 'done'
+                 from package_depends dp
+                 inner join package as d on (d.id = dp.dependency)
+             ) as dp on ( p.id = dp.package)
+             group by p.id
+            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')
+	    ) as xx";
+        my $db = $self->{dbh};
+        my @next_pkg = $db->selectrow_array($sql);
+        return undef if (!defined($next_pkg[0]));
+        return $next_pkg[0];
+    }else{
+        return undef;
+    }
+}
+
+sub ready_detail{
+    my $self = shift;
+    
+    if( defined($self->{dbh}) ){
+    	my $sql = "select
+           p.repo, p.package
+           from
+           package as p
+            left outer join
+             ( select 
+                 dp.id, dp.package, d.done as 'done'
+                 from package_depends dp
+                 inner join package as d on (d.id = dp.dependency)
+             ) as dp on ( p.id = dp.package)
+             group by p.id
+            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')";
+        my $sth = $self->{dbh}->prepare($sql);
+        $sth->execute();
+	my $res=undef;
+	my $cnt=0;
+	while( my $row = $sth->fetchrow_arrayref() ){
+	    $res.=sprintf(" %s-%s,",$row->[0],$row->[1]);
+	    $cnt++;
+	}
+	return [$cnt,$res];
+    }else{
+        return undef;
+    }
+}
+
 sub count{
     my $self = shift;
     
@@ -190,7 +271,7 @@ sub status{
     my ($self,$package) = @_;
     if( defined($package)){
 	if( $package ne ''){
-	    my $sth = $self->{dbh}->prepare("select name,repo,done,fail,builder,git,abs from package where package = ?");
+	    my $sth = $self->{dbh}->prepare("select package,repo,done,fail,builder,git,abs from package where package = ?");
 	    $sth->execute($package);
 	    my $ar = $sth->fetchall_arrayref();
 	    if( scalar(@{$ar}) ){ # 1 or more
@@ -259,14 +340,14 @@ sub pkg_work {
 sub pkg_done {
 	my $self = shift;
     my $package = shift;
-    $self->{dbh}->do("update package set builder = null, done = 1, finish = strftime('%s', 'now') where package = '$package'");
+    $self->{dbh}->do("update package set builder = null, done = 1, fail = 0, finish = strftime('%s', 'now') where package = '$package'");
 }
 
 # set package fail
 sub pkg_fail {
 	my $self = shift;
     my $package = shift;
-    $self->{dbh}->do("update package set builder = null, fail = 1, finish = strftime('%s', 'now') where package = '$package'");
+    $self->{dbh}->do("update package set builder = null, done = 0, fail = 1, finish = strftime('%s', 'now') where package = '$package'");
 }
 
 # unfail package or all
@@ -274,11 +355,44 @@ sub pkg_unfail {
 	my $self = shift;
 	my $package = shift;
 	if ($package eq "all") {
-		$self->{dbh}->do("update package set fail = 0, done = 0 where fail = 1");
+		$self->{dbh}->do("update package set fail = 0, done = 0, builder = null where fail = 1");
 	} else {
-		$self->{dbh}->do("update package set fail = 0, done = 0 where package = '$package'");
+		$self->{dbh}->do("update package set fail = 0, done = 0, builder = null where package = '$package'");
 	}
 }
+
+sub unfuck {
+	my $self = shift;
+	my $reporoot = $self->{packaging}->{repo}->{root};
+	my $count = 0;
+	
+	my $rows = $self->{dbh}->selectall_arrayref("select repo, package, pkgname, pkgver, pkgrel from package where done = 0");
+	
+	foreach my $row (@$rows) {
+		my ($repo, $package, $pkgname, $pkgver, $pkgrel) = @$row;
+		my $namecount = split(/ /, $pkgname);
+		foreach my $name (split(/ /, $pkgname)) {
+			my $namebase = "$reporoot/$repo/$name-$pkgver-$pkgrel";
+			if (-e "$namebase-arm.pkg.tar.xz") {
+				if (stat("$namebase-arm.pkg.tar.xz")->mtime gt "1295325270") {
+					$namecount--;
+				}
+			} elsif (-e "$namebase-any.pkg.tar.xz") {
+				if (stat("$namebase-any.pkg.tar.xz")->mtime gt "1295325270") {
+					$namecount--;
+				}
+			} else {
+				last;
+			}
+		}
+		if ($namecount == 0) {
+			$self->{dbh}->do("update package set fail = 0, done = 1 where package = '$package'");
+			$count++;
+		}
+	}
+	$q_irc->enqueue(['db', 'print', "unfucked $count packages"]);
+}
+		
 
 sub update {
 	my $self = shift;
@@ -290,7 +404,7 @@ sub update {
 
 	$q_irc->enqueue(['db', 'print', 'Updating git..']);
 	print "update git..\n";
-	`git --git-dir="$gitroot/.git" --work-tree=".." pull`;
+	system("pushd $gitroot; git pull; popd");
 	open FILE, "<$gitroot/packages-to-skip.txt" or die $!;
 	while (<FILE>) {
 		next if ($_ =~ /(^#.*|^\W.*)/);
@@ -314,6 +428,7 @@ sub update {
 			chomp($vars);
 			my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$plugrel,$noautobuild) = split(/\|/, $vars);
 			# new package, different plugrel or version, update, done = 0
+			next unless (defined $plugrel); # no plugrel? no soup!
 			next unless (! defined $db_pkgver || "$plugrel" ne "$db_plugrel" || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			my $is_done = 0;
 			# noautobuild set, assume built, done = 1
@@ -350,6 +465,10 @@ sub update {
 				}
 				next;
 			}
+			# skip a bad source
+			next if (! defined $pkgver);
+			# create work unit here, to repackage abs changes without ver-rel bump
+			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			# new package, different version, update, done = 0
 			next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			print "$repo/$pkg to $pkgver-$pkgrel\n";
@@ -357,7 +476,7 @@ sub update {
 			$self->{dbh}->do("insert into package (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)",
 				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends);
 			# create work unit package
-			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
+			#`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			$abs_count++;
 		}
 	}
