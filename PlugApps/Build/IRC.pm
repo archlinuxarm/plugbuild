@@ -99,7 +99,7 @@ sub Run{
                                     $self->irc_priv_print("usage: !recycle <irc|database|service|all>");
                                 }
                             }
-			    case "!ready" {
+							case "!ready" {
                             	$q_db->enqueue(['irc','ready',$arg]);
                             }
                             case "!unfuck" {
