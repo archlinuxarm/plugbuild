@@ -137,8 +137,10 @@ sub Run{
 sub connect {
     my ($self) = @_;
     if( $available->down_nb ){
-        my $database = $self->{sqlite};
-        my $db = DBI->connect("dbi:SQLite:$database", "", "", {RaiseError => 0, AutoCommit => 1});
+        my $database = $self->{mysql};
+		my $user = $self->{user};
+		my $pass = $self->{pass};
+        my $db = DBI->connect("dbi:mysql:$database", "$user", "$pass", {RaiseError => 0, AutoCommit => 1});
         if( defined($db) ){
             # store our handle
             $self->{dbh} = $db;
@@ -180,7 +182,7 @@ sub get_next_package{
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!$next_pkg[0]);
-        $self->{dbh}->do("update package set start = strftime('%s', 'now') where package = '$next_pkg[1]'");
+        $self->{dbh}->do("update package set start = unix_timestamp() where package = '$next_pkg[1]'");
         return \@next_pkg;
     }else{
         return undef;
@@ -340,14 +342,14 @@ sub pkg_work {
 sub pkg_done {
 	my $self = shift;
     my $package = shift;
-    $self->{dbh}->do("update package set builder = null, done = 1, fail = 0, finish = strftime('%s', 'now') where package = '$package'");
+    $self->{dbh}->do("update package set builder = null, done = 1, fail = 0, finish = unix_timestamp() where package = '$package'");
 }
 
 # set package fail
 sub pkg_fail {
 	my $self = shift;
     my $package = shift;
-    $self->{dbh}->do("update package set builder = null, done = 0, fail = 1, finish = strftime('%s', 'now') where package = '$package'");
+    $self->{dbh}->do("update package set builder = null, done = 0, fail = 1, finish = unix_timestamp() where package = '$package'");
 }
 
 # unfail package or all
