@@ -404,7 +404,7 @@ sub unfuck {
 	
 	foreach my $row (@$rows) {
 		my ($repo, $package, $pkgname, $pkgver, $pkgrel) = @$row;
-		my $namecount = split(/ /, $pkgname);
+		my $namecount = () = split(/ /, $pkgname, -1);
 		foreach my $name (split(/ /, $pkgname)) {
 			my $namebase = "$reporoot/$repo/$name-$pkgver-$pkgrel";
 			if (-e "$namebase-arm.pkg.tar.xz") {
