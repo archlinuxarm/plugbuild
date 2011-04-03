@@ -523,7 +523,7 @@ sub update {
 	# build package_name_provides
 	$q_irc->enqueue(['db', 'update', "Updated $git_count from git, $abs_count from abs. Rebuilding depends.."]);
 	print "building package_name_provides..\n";
-	$rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from abs");
+	$rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from abs where del = 0");
 	$self->{dbh}->do("delete from package_name_provides");
 	foreach my $row (@$rows) {
 		my ($id, $pkgname, $provides) = @$row;
@@ -546,7 +546,7 @@ sub rebuild_all {
 	my $self = shift;
 	# build package_depends using depends AND makedepends
 	$q_irc->enqueue(['db', 'print', "Rebuilding package_depends with depends and makedepends.."]);
-	my $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs");
+	my $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs where del = 0");
 	$self->{dbh}->do("delete from package_depends");
 	foreach my $row (@$rows) {
 		my ($id, $depends, $makedepends) = @$row;
