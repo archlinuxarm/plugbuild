@@ -236,18 +236,19 @@ sub ready_detail{
     my $self = shift;
     
     if( defined($self->{dbh}) ){
-    	my $sql = "select
-           p.repo, p.package
+        my $sql = "select
+           p.repo, p.package, p.depends, p.makedepends
            from
-           package as p
+           abs as p
             left outer join
              ( select 
                  dp.id, dp.package, d.done as 'done'
                  from package_depends dp
-                 inner join package as d on (d.id = dp.dependency)
-             ) as dp on ( p.id = dp.package)
-             group by p.id
-            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')";
+                 inner join armv5 as d on (d.id = dp.dependency)
+             ) as dp on (p.id = dp.package)
+            left outer join armv5 as a on (a.id = p.id)
+            where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
+            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) )";
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute();
 	my $res=undef;
