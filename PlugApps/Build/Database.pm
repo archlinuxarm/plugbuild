@@ -506,7 +506,7 @@ sub update {
 			$self->{dbh}->do("insert into armv5 (id, done, fail) values (LAST_INSERT_ID(), 0, 0) on duplicate key update done = 0, fail = 0");
 
 			# create work unit package
-			#`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
+			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			$abs_count++;
 		}
 	}
