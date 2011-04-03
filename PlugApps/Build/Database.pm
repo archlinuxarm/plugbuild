@@ -291,17 +291,19 @@ sub status{
     my ($self,$package) = @_;
     if( defined($package)){
 	if( $package ne ''){
-		# TODO: multiple arch, skip/del flag
-	    my $sth = $self->{dbh}->prepare("select package, repo, done, fail, builder, git, abs from abs inner join armv5 on (abs.id = armv5.id) where package = ?");
+		# TODO: multiple arch
+	    my $sth = $self->{dbh}->prepare("select package, repo, done, fail, builder, git, abs, skip, del from abs inner join armv5 on (abs.id = armv5.id) where package = ?");
 	    $sth->execute($package);
 	    my $ar = $sth->fetchall_arrayref();
 	    if( scalar(@{$ar}) ){ # 1 or more
 			foreach my $r (@{$ar}){
-				my ($name,$repo,$done,$fail,$builder,$git,$abs)= @{$r};
+				my ($name, $repo, $done, $fail, $builder, $git, $abs, $skip, $del) = @{$r};
 				my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
 				if( $builder ne '' && $state eq 'unbuilt'){
 					$state = 'building';
 				}
+				$state = "skipped" if ($skip);
+				$state = "removed" if ($del);
 				my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
 				my $status= sprintf("Status of package '%s' : repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
 				$status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
@@ -489,7 +491,7 @@ sub update {
 		foreach my $pkg (glob("$absroot/$repo/*")) {
 			next unless (-d $pkg);
 			$pkg =~ s/^\/.*\///;
-			next if ($skiplist{$pkg});
+			#next if ($skiplist{$pkg});
 			next if ($pkg =~ /.*\-lts$/);
 			$abslist{$pkg} = 1;
 			my ($db_pkgver, $db_pkgrel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel from abs where package = ?", undef, $pkg);
@@ -498,26 +500,28 @@ sub update {
 			my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends) = split(/\|/, $vars);
 			if ($gitlist{$pkg}) {
 				if ("$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
-					$q_irc->enqueue(['db','print',"$pkg is out of date in git, current = $db_pkgver-$db_pkgrel, new = $pkgver-$pkgrel"]);
+					$q_irc->enqueue(['db','print',"$pkg is out of date in git, git = $db_pkgver-$db_pkgrel, abs = $pkgver-$pkgrel"]);
 				}
 				next;
 			}
 			# skip a bad source
 			next if (! defined $pkgver);
-			# create work unit here, to repackage abs changes without ver-rel bump
-			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
+			# create work unit here for non-skipped packages, to repackage abs changes without ver-rel bump
+			if (! $skiplist{$pkg}) {
+				`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
+			}
 			# new package, different version, update, done = 0
 			next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			print "$repo/$pkg to $pkgver-$pkgrel\n";
 			# update abs table
-			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0)
-                              on duplicate key update id = LAST_INSERT_ID(id), repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, del = 0",
-				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends);
+			my $is_skip = 0;
+			$is_skip = 1 if ($skiplist{$pkg});
+			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, del) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0)
+                              on duplicate key update id = LAST_INSERT_ID(id), repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0",
+				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip);
 			# update architecture tables
 			$self->{dbh}->do("insert into armv5 (id, done, fail) values (LAST_INSERT_ID(), 0, 0) on duplicate key update done = 0, fail = 0");
 
-			# create work unit package
-			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			$abs_count++;
 		}
 	}
