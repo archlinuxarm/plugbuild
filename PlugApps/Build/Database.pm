@@ -49,12 +49,12 @@ sub Run{
             }
             case "percent_done" { #generally recv'd from irc..
                 my $table = @{$orders}[2];
-                my ($done,$count) = ($self->done(),$self->count('package'));
+                my ($done,$count) = ($self->done(),$self->count('abs'));
                 $q_irc->enqueue(['db','percent_done',$done,$count]);
             }
             case "percent_failed" { #generally recv'd from irc..
                 my $table = @{$orders}[2];
-                my ($done,$count) = ($self->failed(),$self->count('package'));
+                my ($done,$count) = ($self->failed(),$self->count('abs'));
                 $q_irc->enqueue(['db','percent_failed',$done,$count]);
             }
             case "next" { #generally recv'd from svc
