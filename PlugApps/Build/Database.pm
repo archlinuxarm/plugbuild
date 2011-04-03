@@ -457,7 +457,7 @@ sub update {
 			print "$repo/$pkg to $pkgver-$pkgrel-plug$plugrel, done = $is_done\n";
 			# update abs table
 			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0)
-                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, del = 0",
+                              on duplicate key update id = LAST_INSERT_ID(id), repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, del = 0",
 							undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
 			# update architecture tables
 			$self->{dbh}->do("insert into armv5 (id, done, fail) values (LAST_INSERT_ID(), ?, 0)
@@ -500,9 +500,10 @@ sub update {
 			print "$repo/$pkg to $pkgver-$pkgrel\n";
 			# update abs table
 			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0)
-                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, del = 0",
+                              on duplicate key update id = LAST_INSERT_ID(id), repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, del = 0",
 				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends);
 			# update architecture tables
+			$self->
 			$self->{dbh}->do("insert into armv5 (id, done, fail) values (LAST_INSERT_ID(), 0, 0) on duplicate key update done = 0, fail = 0");
 
 			# create work unit package
