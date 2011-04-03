@@ -165,19 +165,21 @@ sub disconnect {
 sub get_next_package{
     my ($self, $builder) = @_;
     if( defined($self->{dbh}) ){
-    	$self->{dbh}->do("update package set builder = null where builder = '$builder'");
+		# TODO: select architecture for builder
+    	$self->{dbh}->do("update armv5 set builder = null where builder = '$builder'");
         my $sql = "select
            p.repo, p.package, p.depends, p.makedepends
            from
-           package as p
+           abs as p
             left outer join
              ( select 
                  dp.id, dp.package, d.done as 'done'
                  from package_depends dp
-                 inner join package as d on (d.id = dp.dependency)
-             ) as dp on ( p.id = dp.package)
-             group by p.id
-            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')  limit 1";
+                 inner join armv5 as d on (d.id = dp.dependency)
+             ) as dp on (p.id = dp.package)
+            left outer join armv5 as a on (a.id = p.id)
+            where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
+            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) limit 1";
 #            having (count(dp.id) == sum(dp.done) or (p.depends = '') ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')  limit 1";
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
@@ -193,21 +195,34 @@ sub ready{
     my $self = shift;
     
     if( defined($self->{dbh}) ){
-    	my $sql = "
-	    select count(*) from (
-	    select
-           'blank' as crap
+        my $sql = "select count(*) from (select
+           p.repo, p.package, p.depends, p.makedepends
            from
-           package as p
+           abs as p
             left outer join
              ( select 
                  dp.id, dp.package, d.done as 'done'
                  from package_depends dp
-                 inner join package as d on (d.id = dp.dependency)
-             ) as dp on ( p.id = dp.package)
-             group by p.id
-            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')
-	    ) as xx";
+                 inner join armv5 as d on (d.id = dp.dependency)
+             ) as dp on (p.id = dp.package)
+            left outer join armv5 as a on (a.id = p.id)
+            where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
+            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) )) as xx";
+#    	my $sql = "
+#	    select count(*) from (
+#	    select
+#           'blank' as crap
+#           from
+#           package as p
+#            left outer join
+#             ( select 
+#                 dp.id, dp.package, d.done as 'done'
+#                 from package_depends dp
+#                 inner join package as d on (d.id = dp.dependency)
+#             ) as dp on ( p.id = dp.package)
+#             group by p.id
+#            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')
+#	    ) as xx";
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!defined($next_pkg[0]));
@@ -259,13 +274,15 @@ sub count{
 
 sub done{
     my $self = shift;
-	my $ret = ($self->{dbh}->selectrow_array("select count(*) from package where done = 1 and fail <> 1"))[0] || 0;
+	# TODO: multiple arch
+	my $ret = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where done = 1 and fail = 0"))[0] || 0;
     return $ret;
 }
 
 sub failed{
     my $self = shift;
-	my $ret = ($self->{dbh}->selectrow_array("select count(*) from package where fail = 1"))[0] || 0;
+	# TODO: multiple arch
+	my $ret = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where fail = 1"))[0] || 0;
     return $ret;
 }
 
@@ -335,21 +352,23 @@ sub pkg_work {
 	my $self = shift;
     my $package = shift;
     my $builder = shift;
-    $self->{dbh}->do("update package set builder = '$builder' where package = '$package'");
+	# TODO: multiple arch
+    #$self->{dbh}->do("update package set builder = '$builder' where package = '$package'");
+	$self->{dbh}->do("update armv5 inner join abs on (armv5.id = abs.id) set armv5.builder = ? where abs.package = ?", undef, $builder, $package)
 }
 
 # set package done
 sub pkg_done {
 	my $self = shift;
     my $package = shift;
-    $self->{dbh}->do("update package set builder = null, done = 1, fail = 0, finish = unix_timestamp() where package = '$package'");
+    $self->{dbh}->do("update armv5 inner join abs on (armv5.id = abs.id) set armv5.builder = null, armv5.done = 1, armv5.fail = 0, armv5.finish = unix_timestamp() where abs.package = ?", undef, $package);
 }
 
 # set package fail
 sub pkg_fail {
 	my $self = shift;
     my $package = shift;
-    $self->{dbh}->do("update package set builder = null, done = 0, fail = 1, finish = unix_timestamp() where package = '$package'");
+    $self->{dbh}->do("update armv5 inner join abs on (armv5.id = abs.id) set armv5.builder = null, armv5.done = 0, armv5.fail = 1, armv5.finish = unix_timestamp() where abs.package = ?", undef, $package);
 }
 
 # unfail package or all
@@ -357,9 +376,9 @@ sub pkg_unfail {
 	my $self = shift;
 	my $package = shift;
 	if ($package eq "all") {
-		$self->{dbh}->do("update package set fail = 0, done = 0, builder = null where fail = 1");
+		$self->{dbh}->do("update armv5 set fail = 0, done = 0, builder = null where fail = 1");
 	} else {
-		$self->{dbh}->do("update package set fail = 0, done = 0, builder = null where package = '$package'");
+		$self->{dbh}->do("update armv5 inner join abs on (armv5.id = abs.id) set armv5.fail = 0, armv5.done = 0, armv5.builder = null where abs.package = ?", undef, $package);
 	}
 }
 
@@ -424,7 +443,7 @@ sub update {
 			next unless (-d $pkg);
 			$pkg =~ s/^\/.*\///;
 			$gitlist{$pkg} = 1;
-			my ($db_pkgver, $db_pkgrel, $db_plugrel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, plugrel from package where package = '$pkg'");
+			my ($db_pkgver, $db_pkgrel, $db_plugrel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, plugrel from abs where package = ?", undef, $pkg);
 			$db_plugrel = $db_plugrel || "0";
 			my $vars = `./pkgsource.sh $gitroot $repo $pkg`;
 			chomp($vars);
@@ -436,9 +455,14 @@ sub update {
 			# noautobuild set, assume built, done = 1
 			$is_done = 1 if ($noautobuild);
 			print "$repo/$pkg to $pkgver-$pkgrel-plug$plugrel, done = $is_done\n";
-			$self->{dbh}->do("delete from package where package = '$pkg'");
-			$self->{dbh}->do("insert into package (done, package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)",
-				undef, $is_done, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
+			# update abs table
+			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0)
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, del = 0",
+							undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
+			# update architecture tables
+			$self->{dbh}->do("insert into armv5 (id, done, fail) values (LAST_INSERT_ID(), ?, 0)
+                              on duplicate key update done = ?, fail = 0",
+							undef, $is_done, $is_done);
 			# create work unit package
 			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
 			$git_count++;
@@ -457,7 +481,7 @@ sub update {
 			next if ($skiplist{$pkg});
 			next if ($pkg =~ /.*\-lts$/);
 			$abslist{$pkg} = 1;
-			my ($db_pkgver, $db_pkgrel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel from package where package = '$pkg'");
+			my ($db_pkgver, $db_pkgrel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel from abs where package = ?", undef, $pkg);
 			my $vars = `./pkgsource.sh $absroot $repo $pkg`;
 			chomp($vars);
 			my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends) = split(/\|/, $vars);
@@ -474,39 +498,43 @@ sub update {
 			# new package, different version, update, done = 0
 			next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			print "$repo/$pkg to $pkgver-$pkgrel\n";
-			$self->{dbh}->do("delete from package where package = '$pkg'");
-			$self->{dbh}->do("insert into package (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)",
-				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends);
+			# update abs table
+			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0)
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, del = 0",
+				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends);
+			# update architecture tables
+			$self->{dbh}->do("insert into armv5 (id, done, fail) values (LAST_INSERT_ID(), 0, 0) on duplicate key update done = 0, fail = 0");
+
 			# create work unit package
 			#`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			$abs_count++;
 		}
 	}
 	# prune git/abs in db
-	my $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from package");
+	my $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from abs");
 	foreach my $row (@$rows) {
 		my ($pkg, $git, $abs) = @$row;
 		next if ($git && $gitlist{$pkg});
 		next if ($abs && $abslist{$pkg});
-		print "removing $pkg\n";
-		$self->{dbh}->do("delete from package where package = '$pkg'");
+		print "del flag on $pkg\n";
+		$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
 	}
 	
 	# build package_name_provides
 	$q_irc->enqueue(['db', 'update', "Updated $git_count from git, $abs_count from abs. Rebuilding depends.."]);
 	print "building package_name_provides..\n";
-	$rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from package");
+	$rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from abs");
 	$self->{dbh}->do("delete from package_name_provides");
 	foreach my $row (@$rows) {
 		my ($id, $pkgname, $provides) = @$row;
 		foreach my $name (split(/ /, $pkgname)) {
 			$name =~ s/(<|=|>).*//;
-			$self->{dbh}->do("insert into package_name_provides (name, provides, package) values (\"$name\", 0, $id)");
+			$self->{dbh}->do("insert into package_name_provides (name, provides, package) values (?, 0, ?)", undef, $name, $id);
 		}
 		if ($provides) {
 			foreach my $name (split(/ /, $provides)) {
 				$name =~ s/(<|=|>).*//;
-				$self->{dbh}->do("insert into package_name_provides (name, provides, package) values (\"$name\", 1, $id)");
+				$self->{dbh}->do("insert into package_name_provides (name, provides, package) values (?, 1, ?)", undef, $name, $id);
 			}
 		}
 	}
@@ -518,7 +546,7 @@ sub rebuild_all {
 	my $self = shift;
 	# build package_depends using depends AND makedepends
 	$q_irc->enqueue(['db', 'print', "Rebuilding package_depends with depends and makedepends.."]);
-	my $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from package");
+	my $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs");
 	$self->{dbh}->do("delete from package_depends");
 	foreach my $row (@$rows) {
 		my ($id, $depends, $makedepends) = @$row;
@@ -540,7 +568,7 @@ sub rebuild_some {
 	my $self = shift;
 	# build package_depends using just depends
 	$q_irc->enqueue(['db', 'print', "Rebuilding package_depends with only depends.."]);
-	my $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from package");
+	my $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs");
 	$self->{dbh}->do("delete from package_depends");
 	foreach my $row (@$rows) {
 		my ($id, $depends, $makedepends) = @$row;
