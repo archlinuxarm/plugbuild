@@ -290,7 +290,8 @@ sub status{
     my ($self,$package) = @_;
     if( defined($package)){
 	if( $package ne ''){
-	    my $sth = $self->{dbh}->prepare("select package,repo,done,fail,builder,git,abs from package where package = ?");
+		# TODO: multiple arch, skip/del flag
+	    my $sth = $self->{dbh}->prepare("select package, repo, done, fail, builder, git, abs from abs inner join armv5 on (abs.id = armv5.id) where package = ?");
 	    $sth->execute($package);
 	    my $ar = $sth->fetchall_arrayref();
 	    if( scalar(@{$ar}) ){ # 1 or more
@@ -303,7 +304,7 @@ sub status{
 				my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
 				my $status= sprintf("Status of package '%s' : repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
 				$status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
-				#TODO: multiple arch
+				# TODO: multiple arch
 				my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail from package_name_provides as pn inner join package_depends as pd on (pn.package = pd.package) inner join armv5 as arm on (pd.dependency = arm.id) inner join abs on (arm.id = abs.id) where arm.done = 0 and pn.name = ?", undef, $name);
 				if ($blocklist) {
 					$status .= ", blocked on: ";
