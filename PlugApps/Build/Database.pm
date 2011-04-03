@@ -503,7 +503,6 @@ sub update {
                               on duplicate key update id = LAST_INSERT_ID(id), repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, del = 0",
 				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends);
 			# update architecture tables
-			$self->
 			$self->{dbh}->do("insert into armv5 (id, done, fail) values (LAST_INSERT_ID(), 0, 0) on duplicate key update done = 0, fail = 0");
 
 			# create work unit package
