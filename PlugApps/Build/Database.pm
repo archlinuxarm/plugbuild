@@ -112,17 +112,17 @@ sub Run{
 		my $target = @{$orders}[2];
 		if( $target eq 'detail'){
 		    my $ready = $self->ready_detail();
-		    $q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
+				$q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
 		    if( $ready->[0] > 1){
-			$q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
+				$q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
 		    }
 		}else{
 		    my $ready = $self->ready();
-		    if( defined($ready) ){
-			$ready = $ready?$ready:"none";
-			$q_irc->enqueue(['db','print',"Packages waiting to be built: $ready"]);
+		    if( defined($ready->[0]) ){
+				#$ready = $ready?$ready:"none";
+				$q_irc->enqueue(['db','print',"Packages waiting to be built: ARMv5: $ready->[0], ARMv7: $ready->[1]"]);
 		    }else{
-			$q_irc->enqueue(['db','print','ready: unknown error.']);
+				$q_irc->enqueue(['db','print','ready: unknown error.']);
 		    }
 		}
 	    }
@@ -192,7 +192,7 @@ sub ready{
     my $self = shift;
     
     if( defined($self->{dbh}) ){
-        my $sql = "select count(*) from (select
+        my $v5sql = "select count(*) from (select
            p.repo, p.package, p.depends, p.makedepends
            from
            abs as p
@@ -205,10 +205,23 @@ sub ready{
             left outer join armv5 as a on (a.id = p.id)
             where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
             having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) )) as xx";
-        my $db = $self->{dbh};
-        my @next_pkg = $db->selectrow_array($sql);
-        return undef if (!defined($next_pkg[0]));
-        return $next_pkg[0];
+        my $v7sql = "select count(*) from (select
+           p.repo, p.package, p.depends, p.makedepends
+           from
+           abs as p
+            left outer join
+             ( select 
+                 dp.id, dp.package, d.done as 'done'
+                 from package_depends dp
+                 inner join armv7 as d on (d.id = dp.dependency)
+             ) as dp on (p.id = dp.package)
+            left outer join armv7 as a on (a.id = p.id)
+            where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
+            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) )) as xx";
+        my @next_pkg5 = $self->{dbh}->selectrow_array($v5sql);
+        my @next_pkg7 = $self->{dbh}->selectrow_array($v7sql);
+        return undef if (!defined($next_pkg5[0]) && !defined($next_pkg7[0]));
+        return [$next_pkg5[0], $next_pkg7[0]];
     }else{
         return undef;
     }
