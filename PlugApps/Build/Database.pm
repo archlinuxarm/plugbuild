@@ -50,7 +50,7 @@ sub Run{
             case "percent_done" { #generally recv'd from irc..
                 my $table = @{$orders}[2];
                 my ($done,$count) = ($self->done(),$self->count('abs'));
-                $q_irc->enqueue(['db','percent_done',$done,$count]);
+                $q_irc->enqueue(['db','print',"Successful builds: ARMv5: $done->[0] of $count, ".sprintf("%0.2f%%",($done->[0]/$count)*100)." ARMv7: $done->[1] of $count, ".sprintf("%0.2f%%",($done->[1]/$count)*100)]);
             }
             case "percent_failed" { #generally recv'd from irc..
                 my $table = @{$orders}[2];
@@ -265,9 +265,9 @@ sub count{
 
 sub done{
     my $self = shift;
-	# TODO: multiple arch
-	my $ret = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where done = 1 and fail = 0"))[0] || 0;
-    return $ret;
+	my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where done = 1 and fail = 0"))[0] || 0;
+	my $armv7 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv7 on (armv7.id = abs.id) where done = 1 and fail = 0"))[0] || 0;
+    return [$armv5, $armv7];
 }
 
 sub failed{
