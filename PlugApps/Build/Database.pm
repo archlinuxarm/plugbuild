@@ -419,14 +419,14 @@ sub update {
 	$q_irc->enqueue(['db', 'print', 'Updating git..']);
 	print "update git..\n";
 	system("pushd $gitroot; git pull; popd");
-	open FILE, "<$gitroot/packages-to-skip.txt" or die $!;
-	while (<FILE>) {
-		next if ($_ =~ /(^#.*|^\W.*)/);
-		my ($pkg) = (split(/ /, $_))[2];
-		chomp($pkg);
-		$skiplist{$pkg} = 1;
-	}
-	close FILE;
+#	open FILE, "<$gitroot/packages-to-skip.txt" or die $!;
+#	while (<FILE>) {
+#		next if ($_ =~ /(^#.*|^\W.*)/);
+#		my ($pkg) = (split(/ /, $_))[2];
+#		chomp($pkg);
+#		$skiplist{$pkg} = 1;
+#	}
+#	close FILE;
 	
 	# add/update git packages
 	print "update git packages..\n";
