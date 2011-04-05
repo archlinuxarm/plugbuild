@@ -58,15 +58,15 @@ sub Run{
                 $q_irc->enqueue(['db','percent_failed',$done,$count]);
             }
             case "next" { #generally recv'd from svc
-                my $builder = @{$orders}[2];
-                my $next = $self->get_next_package($builder);
+                my ($arch, $builder) = split(/\|/, @{$orders}[2]);
+                my $next = $self->get_next_package($builder, $arch);
                 if( $next ){
                     my $pkg = join('-',@{$next}[0,1]).'!'.join(' ',@{$next}[2,3]);
                     printf("DbRespond:next:%s\n",$pkg);
-                    $self->pkg_work(@{$next}[1], $builder);
-                    $q_svc->enqueue(['db','next',$builder,$pkg]);
+                    $self->pkg_work(@{$next}[1], $builder, $arch);
+                    $q_svc->enqueue(['db','next',@{$orders}[2],$pkg]);
                 }else{
-                    $q_svc->enqueue(['db','next',$builder,'FAIL']);
+                    $q_svc->enqueue(['db','next',@{$orders}[2],'FAIL']);
                 }
             }
             case "add" { # from svc
@@ -163,10 +163,9 @@ sub disconnect {
 }
 
 sub get_next_package{
-    my ($self, $builder) = @_;
+    my ($self, $builder, $arch) = @_;
     if( defined($self->{dbh}) ){
-		# TODO: select architecture for builder
-    	$self->{dbh}->do("update armv5 set builder = null where builder = '$builder'");
+    	$self->{dbh}->do("update $arch set builder = null where builder = '$builder'");
         my $sql = "select
            p.repo, p.package, p.depends, p.makedepends
            from
@@ -175,12 +174,11 @@ sub get_next_package{
              ( select 
                  dp.id, dp.package, d.done as 'done'
                  from package_depends dp
-                 inner join armv5 as d on (d.id = dp.dependency)
+                 inner join $arch as d on (d.id = dp.dependency)
              ) as dp on (p.id = dp.package)
-            left outer join armv5 as a on (a.id = p.id)
+            left outer join $arch as a on (a.id = p.id)
             where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
             having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) limit 1";
-#            having (count(dp.id) == sum(dp.done) or (p.depends = '') ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')  limit 1";
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!$next_pkg[0]);
@@ -208,21 +206,6 @@ sub ready{
             left outer join armv5 as a on (a.id = p.id)
             where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
             having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) )) as xx";
-#    	my $sql = "
-#	    select count(*) from (
-#	    select
-#           'blank' as crap
-#           from
-#           package as p
-#            left outer join
-#             ( select 
-#                 dp.id, dp.package, d.done as 'done'
-#                 from package_depends dp
-#                 inner join package as d on (d.id = dp.dependency)
-#             ) as dp on ( p.id = dp.package)
-#             group by p.id
-#            having (count(dp.id) == sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) and p.done <> 1 and p.fail <> 1 and (p.builder is null or p.builder = '')
-#	    ) as xx";
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!defined($next_pkg[0]));
@@ -327,9 +310,8 @@ sub status{
 }
 
 sub pkg_add {
-	my $self = shift;
-	my $data = shift;
-	my ($repo, $package, $filename, $md5sum_sent) = split(/\|/, $data);
+	my ($self, $data) = @_;
+	my ($arch, $repo, $package, $filename, $md5sum_sent) = split(/\|/, $data);
     print " -> adding $package\n";
 
     # verify md5sum
@@ -345,13 +327,15 @@ sub pkg_add {
     }
     
     # move file, repo-add it
-    print "   -> adding $repo/$package ($filename)..\n";
-    system("mv -f $self->{packaging}->{in_pkg}/$filename $self->{packaging}->{repo}->{root}/$repo");
+    print "   -> adding $arch/$repo/$package ($filename)..\n";
+    system("mv -f $self->{packaging}->{in_pkg}/$filename $self->{packaging}->{repo}->{armv5}/$repo") if ($arch eq "armv5");
+	system("mv -f $self->{packaging}->{in_pkg}/$filename $self->{packaging}->{repo}->{armv7}/$repo") if ($arch eq "armv7");
     if ($? >> 8) {
         print "    -> move failed\n";
         return 1;
     }
-    system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{root}/$repo/$repo.db.tar.gz $self->{packaging}->{repo}->{root}/$repo/$filename");
+    system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{armv5}/$repo/$repo.db.tar.gz $self->{packaging}->{repo}->{armv5}/$repo/$filename") if ($arch eq "armv5");
+	system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{armv7}/$repo/$repo.db.tar.gz $self->{packaging}->{repo}->{armv7}/$repo/$filename") if ($arch eq "armv7");
     if ($? >> 8) {
         print "    -> move failed\n";
         return 1;
@@ -362,26 +346,22 @@ sub pkg_add {
 
 # assign builder to package
 sub pkg_work {
-	my $self = shift;
-    my $package = shift;
-    my $builder = shift;
-	# TODO: multiple arch
-    #$self->{dbh}->do("update package set builder = '$builder' where package = '$package'");
-	$self->{dbh}->do("update armv5 inner join abs on (armv5.id = abs.id) set armv5.builder = ? where abs.package = ?", undef, $builder, $package)
+	my ($self, $package, $builder, $arch) = @_;
+	$self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = ? where abs.package = ?", undef, $builder, $package)
 }
 
 # set package done
 sub pkg_done {
-	my $self = shift;
-    my $package = shift;
-    $self->{dbh}->do("update armv5 inner join abs on (armv5.id = abs.id) set armv5.builder = null, armv5.done = 1, armv5.fail = 0, armv5.finish = unix_timestamp() where abs.package = ?", undef, $package);
+	my ($self, $data) = @_;
+    my ($arch, $package) = split(/\|/, $data);
+    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 1, a.fail = 0, a.finish = unix_timestamp() where abs.package = ?", undef, $package);
 }
 
 # set package fail
 sub pkg_fail {
-	my $self = shift;
-    my $package = shift;
-    $self->{dbh}->do("update armv5 inner join abs on (armv5.id = abs.id) set armv5.builder = null, armv5.done = 0, armv5.fail = 1, armv5.finish = unix_timestamp() where abs.package = ?", undef, $package);
+	my ($self, $data) = @_;
+    my ($arch, $package) = split(/\|/, $data);
+    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 0, a.fail = 1, a.finish = unix_timestamp() where abs.package = ?", undef, $package);
 }
 
 # unfail package or all
