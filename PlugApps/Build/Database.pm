@@ -182,7 +182,6 @@ sub get_next_package{
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!$next_pkg[0]);
-        $self->{dbh}->do("update package set start = unix_timestamp() where package = '$next_pkg[1]'");
         return \@next_pkg;
     }else{
         return undef;
@@ -347,7 +346,7 @@ sub pkg_add {
 # assign builder to package
 sub pkg_work {
 	my ($self, $package, $builder, $arch) = @_;
-	$self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = ? where abs.package = ?", undef, $builder, $package)
+	$self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = ?, a.start = unix_timestamp() where abs.package = ?", undef, $builder, $package)
 }
 
 # set package done
