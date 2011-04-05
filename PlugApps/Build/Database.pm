@@ -450,12 +450,16 @@ sub update {
 			print "$repo/$pkg to $pkgver-$pkgrel-plug$plugrel, done = $is_done\n";
 			# update abs table
 			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0)
-                              on duplicate key update id = LAST_INSERT_ID(id), repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, del = 0",
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, del = 0",
 							undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
 			# update architecture tables
-			$self->{dbh}->do("insert into armv5 (id, done, fail) values (LAST_INSERT_ID(), ?, 0)
+			my ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
+			$self->{dbh}->do("insert into armv5 (id, done, fail) values (?, ?, 0)
                               on duplicate key update done = ?, fail = 0",
-							undef, $is_done, $is_done);
+							undef, $db_id, $is_done, $is_done);
+			$self->{dbh}->do("insert into armv7 (id, done, fail) values (?, ?, 0)
+                              on duplicate key update done = ?, fail = 0",
+							undef, $db_id, $is_done, $is_done);
 			# create work unit package
 			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
 			$git_count++;
@@ -497,11 +501,12 @@ sub update {
 			my $is_skip = 0;
 			$is_skip = 1 if ($skiplist{$pkg});
 			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, del) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0)
-                              on duplicate key update id = LAST_INSERT_ID(id), repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0",
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0",
 				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip);
 			# update architecture tables
-			$self->{dbh}->do("insert into armv5 (id, done, fail) values (LAST_INSERT_ID(), 0, 0) on duplicate key update done = 0, fail = 0");
-
+			my ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
+			$self->{dbh}->do("insert into armv5 (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
+			$self->{dbh}->do("insert into armv7 (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
 			$abs_count++;
 		}
 	}
