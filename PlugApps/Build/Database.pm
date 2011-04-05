@@ -167,18 +167,15 @@ sub get_next_package{
     if( defined($self->{dbh}) ){
     	$self->{dbh}->do("update $arch set builder = null where builder = '$builder'");
         my $sql = "select
-           p.repo, p.package, p.depends, p.makedepends
-           from
-           abs as p
-            left outer join
-             ( select 
-                 dp.id, dp.package, d.done as 'done'
-                 from package_depends dp
-                 inner join $arch as d on (d.id = dp.dependency)
-             ) as dp on (p.id = dp.package)
-            left outer join $arch as a on (a.id = p.id)
-            where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
-            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) limit 1";
+	p.repo, p.package, p.depends, p.makedepends
+from
+abs as p
+join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+left outer join package_depends as dp on (p.id = dp.package)
+left join $arch as d on (d.id = dp.dependency)
+where p.skip = 0 and p.del = 0  
+group by p.id
+having (count(dp.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) limit 1";
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!$next_pkg[0]);
@@ -192,32 +189,30 @@ sub ready{
     my $self = shift;
     
     if( defined($self->{dbh}) ){
-        my $v5sql = "select count(*) from (select
-           p.repo, p.package, p.depends, p.makedepends
-           from
-           abs as p
-            left outer join
-             ( select 
-                 dp.id, dp.package, d.done as 'done'
-                 from package_depends dp
-                 inner join armv5 as d on (d.id = dp.dependency)
-             ) as dp on (p.id = dp.package)
-            left outer join armv5 as a on (a.id = p.id)
-            where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
-            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) )) as xx";
-        my $v7sql = "select count(*) from (select
-           p.repo, p.package, p.depends, p.makedepends
-           from
-           abs as p
-            left outer join
-             ( select 
-                 dp.id, dp.package, d.done as 'done'
-                 from package_depends dp
-                 inner join armv7 as d on (d.id = dp.dependency)
-             ) as dp on (p.id = dp.package)
-            left outer join armv7 as a on (a.id = p.id)
-            where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
-            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) )) as xx";
+        my $v5sql = "select count(*) from (
+select
+	p.repo, p.package, p.depends, p.makedepends
+from
+abs as p
+join armv5 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+left outer join package_depends as dp on (p.id = dp.package)
+left join armv5 as d on (d.id = dp.dependency)
+where p.skip = 0 and p.del = 0  
+group by p.id
+having (count(dp.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
+) as xx";
+        my $v7sql = "select count(*) from (
+select
+	p.repo, p.package, p.depends, p.makedepends
+from
+abs as p
+join armv7 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+left outer join package_depends as dp on (p.id = dp.package)
+left join armv7 as d on (d.id = dp.dependency)
+where p.skip = 0 and p.del = 0  
+group by p.id
+having (count(dp.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
+) as xx";
         my @next_pkg5 = $self->{dbh}->selectrow_array($v5sql);
         my @next_pkg7 = $self->{dbh}->selectrow_array($v7sql);
         return undef if (!defined($next_pkg5[0]) && !defined($next_pkg7[0]));
