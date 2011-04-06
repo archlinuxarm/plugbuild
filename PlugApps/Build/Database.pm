@@ -78,8 +78,8 @@ sub Run{
             	}
             }
             case "unfail" { # from irc
-            	$self->pkg_unfail(@{$orders}[2]);
-            	$q_irc->enqueue(['db','print',"Unfailed @{$orders}[2]"]);
+				my ($arch, $package) = split(/ /, @{$orders}[2], 2);
+            	$self->pkg_unfail($arch, $package);
             }
             case "done" { # from svc
             	$self->pkg_done(@{$orders}[2]);
@@ -373,12 +373,17 @@ sub pkg_fail {
 
 # unfail package or all
 sub pkg_unfail {
-	my $self = shift;
-	my $package = shift;
+	my ($self, $arch, $package) = @_;
+	$arch = "armv$arch";
 	if ($package eq "all") {
-		$self->{dbh}->do("update armv5 set fail = 0, done = 0, builder = null where fail = 1");
+		$self->{dbh}->do("update $arch set fail = 0, done = 0, builder = null where fail = 1");
 	} else {
-		$self->{dbh}->do("update armv5 inner join abs on (armv5.id = abs.id) set armv5.fail = 0, armv5.done = 0, armv5.builder = null where abs.package = ?", undef, $package);
+		$self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.fail = 0, a.done = 0, a.builder = null where abs.package = ?", undef, $package);
+	}
+	if ($self->{dbh}->rows() < 1) {
+		$q_irc->enqueue(['db','print',"Couldn't unfail $package for $arch"]);
+	} else {
+		$q_irc->enqueue(['db','print',"Unfailed $package for $arch"]);
 	}
 }
 

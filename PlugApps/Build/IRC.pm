@@ -122,10 +122,11 @@ sub Run{
                                 }
                             }
                             case "!unfail" {
-                            	if ($arg) {
+								my ($arch, $pkg) = split(/ /, $arg, 2);
+                            	if ($pkg && ($arch eq "5" || $arch eq "7")) {
                             		$q_db->enqueue(['irc','unfail',$arg]);
                             	} else {
-                            		$self->irc_priv_print("usage: !unfail <package|all>");
+                            		$self->irc_priv_print("usage: !unfail <5|7> <package|all>");
                             	}
                             }
                             case "!rebuild" {
