@@ -50,12 +50,12 @@ sub Run{
             case "percent_done" { #generally recv'd from irc..
                 my $table = @{$orders}[2];
                 my ($done,$count) = ($self->done(),$self->count('abs'));
-                $q_irc->enqueue(['db','print',"Successful builds: ARMv5: $done->[0] of $count, ".sprintf("%0.2f%%",($done->[0]/$count)*100)." ARMv7: $done->[1] of $count, ".sprintf("%0.2f%%",($done->[1]/$count)*100)]);
+                $q_irc->enqueue(['db','print',"Successful builds: ARMv5: $done->[0] of $count, ".sprintf("%0.2f%%",($done->[0]/$count)*100)." | ARMv7: $done->[1] of $count, ".sprintf("%0.2f%%",($done->[1]/$count)*100)]);
             }
             case "percent_failed" { #generally recv'd from irc..
                 my $table = @{$orders}[2];
                 my ($done,$count) = ($self->failed(),$self->count('abs'));
-                $q_irc->enqueue(['db','percent_failed',$done,$count]);
+                $q_irc->enqueue(['db','print',"Failed builds: ARMv5: $done->[0] of $count, ".sprintf("%0.2f%%",($done->[0]/$count)*100)." | ARMv7: $done->[1] of $count, ".sprintf("%0.2f%%",($done->[1]/$count)*100)]);
             }
             case "next" { #generally recv'd from svc
                 my ($arch, $builder) = split(/\|/, @{$orders}[2]);
@@ -88,7 +88,7 @@ sub Run{
             	$self->pkg_fail(@{$orders}[2]);
             }
             case "unfuck" { # from irc
-            	$self->unfuck();
+            	#$self->unfuck();
             	$q_irc->enqueue(['db', 'print', 'operation unfuck in progress, sir!']);
             }
             case "update" { # generally recv'd from irc
@@ -272,9 +272,9 @@ sub done{
 
 sub failed{
     my $self = shift;
-	# TODO: multiple arch
-	my $ret = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where fail = 1"))[0] || 0;
-    return $ret;
+	my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where fail = 1"))[0] || 0;
+	my $armv7 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv7 on (armv7.id = abs.id) where fail = 1"))[0] || 0;
+    return [$armv5, $armv7];
 }
 
 sub status{
