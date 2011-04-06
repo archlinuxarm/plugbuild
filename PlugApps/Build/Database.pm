@@ -175,7 +175,7 @@ left outer join package_depends as dp on (p.id = dp.package)
 left join $arch as d on (d.id = dp.dependency)
 where p.skip = 0 and p.del = 0  
 group by p.id
-having (count(dp.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) limit 1";
+having (count(dp.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1";
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!$next_pkg[0]);
@@ -238,7 +238,7 @@ sub ready_detail{
              ) as dp on (p.id = dp.package)
             left outer join armv5 as a on (a.id = p.id)
             where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
-            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) )";
+            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance ";
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute();
 	my $res=undef;
