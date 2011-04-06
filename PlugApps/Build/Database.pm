@@ -110,11 +110,12 @@ sub Run{
 	    }
 	    case "ready" {
 		my $target = @{$orders}[2];
-		if( $target eq 'detail'){
-		    my $ready = $self->ready_detail();
+		my ($detail,$which) = split(/\s/,$target);
+		if( $target eq 'detail' || $detail eq 'detail'){
+		    my $ready = $self->ready_detail($which);
 				$q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
 		    if( $ready->[0] > 1){
-				$q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
+			$q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
 		    }
 		}else{
 		    my $ready = $self->ready();
@@ -224,7 +225,9 @@ having (count(dp.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
 
 sub ready_detail{
     my $self = shift;
+    my $which = shift||5;
     
+    $which = 'armv'.$which;
     if( defined($self->{dbh}) ){
         my $sql = "select
            p.repo, p.package, p.depends, p.makedepends
@@ -234,9 +237,9 @@ sub ready_detail{
              ( select 
                  dp.id, dp.package, d.done as 'done'
                  from package_depends dp
-                 inner join armv5 as d on (d.id = dp.dependency)
+                 inner join $which as d on (d.id = dp.dependency)
              ) as dp on (p.id = dp.package)
-            left outer join armv5 as a on (a.id = p.id)
+            left outer join $which as a on (a.id = p.id)
             where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
             having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance ";
         my $sth = $self->{dbh}->prepare($sql);
