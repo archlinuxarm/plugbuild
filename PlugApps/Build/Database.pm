@@ -95,6 +95,12 @@ sub Run{
             	$self->update();
             	$q_irc->enqueue(['db', 'update', 'done']);
             }
+			case "skip" { # from irc
+				$self->pkg_skip(@{$orders}[2], 1);
+			}
+			case "unskip" { # from irc
+				$self->pkg_skip(@{$orders}[2], 0);
+			}
             case "rebuild" {
             	my $target = @{$orders}[2];
             	if ($target eq "all") {
@@ -105,27 +111,27 @@ sub Run{
             		$q_irc->enqueue(['db','print','Usage: !rebuild <all|some>']);
             	}
             }
-	    case "status" {
-		$self->status(@{$orders}[2]);
-	    }
-	    case "ready" {
-		my $target = @{$orders}[2];
-		my ($detail,$which) = split(/\s/,$target);
-		if( $target eq 'detail' || $detail eq 'detail'){
-		    my $ready = $self->ready_detail($which);
-				$q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
-		    if( $ready->[0] > 1){
-			$q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
-		    }
-		}else{
-		    my $ready = $self->ready();
-		    if( defined($ready->[0]) ){
-				#$ready = $ready?$ready:"none";
-				$q_irc->enqueue(['db','print',"Packages waiting to be built: ARMv5: $ready->[0], ARMv7: $ready->[1]"]);
-		    }else{
-				$q_irc->enqueue(['db','print','ready: unknown error.']);
-		    }
-		}
+			case "status" {
+				$self->status(@{$orders}[2]);
+			}
+			case "ready" {
+			my $target = @{$orders}[2];
+			my ($detail,$which) = split(/\s/,$target);
+			if( $target eq 'detail' || $detail eq 'detail'){
+				my $ready = $self->ready_detail($which);
+					$q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
+				if( $ready->[0] > 1){
+				$q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
+				}
+			}else{
+				my $ready = $self->ready();
+				if( defined($ready->[0]) ){
+					#$ready = $ready?$ready:"none";
+					$q_irc->enqueue(['db','print',"Packages waiting to be built: ARMv5: $ready->[0], ARMv7: $ready->[1]"]);
+				}else{
+					$q_irc->enqueue(['db','print','ready: unknown error.']);
+				}
+			}
 	    }
         }
     }
@@ -390,6 +396,18 @@ sub pkg_unfail {
 	}
 }
 
+# modify package to be (un)skipped
+sub pkg_skip {
+	my ($self, $pkg, $op) = @_;
+	$self->{dbh}->do("update abs set skip = ? where package = ?", undef, $op, $pkg);
+	if ($self->{dbh}->rows() < 1) {
+		$q_irc->enqueue(['db','print',"Couldn't modify $pkg, check the name."]);
+	} else {
+		$q_irc->enqueue(['db','print',sprintf("%s %s", $op?"Skipped":"Unskipped", $pkg)]);
+	}
+}
+
+
 sub unfuck {
 	my $self = shift;
 	my $reporoot = $self->{packaging}->{repo}->{root};
@@ -425,7 +443,7 @@ sub unfuck {
 
 sub update {
 	my $self = shift;
-	my (%skiplist, %gitlist, %abslist);
+	my (%gitlist, %abslist);
 	my $gitroot = $self->{packaging}->{git}->{root};
 	my $absroot = $self->{packaging}->{abs}->{root};
 	my $workroot = $self->{packaging}->{workroot};
@@ -434,14 +452,6 @@ sub update {
 	$q_irc->enqueue(['db', 'print', 'Updating git..']);
 	print "update git..\n";
 	system("pushd $gitroot; git pull; popd");
-#	open FILE, "<$gitroot/packages-to-skip.txt" or die $!;
-#	while (<FILE>) {
-#		next if ($_ =~ /(^#.*|^\W.*)/);
-#		my ($pkg) = (split(/ /, $_))[2];
-#		chomp($pkg);
-#		$skiplist{$pkg} = 1;
-#	}
-#	close FILE;
 	
 	# add/update git packages
 	print "update git packages..\n";
@@ -456,17 +466,18 @@ sub update {
 			my $vars = `./pkgsource.sh $gitroot $repo $pkg`;
 			chomp($vars);
 			my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$plugrel,$noautobuild) = split(/\|/, $vars);
-			# new package, different plugrel or version, update, done = 0
-			next unless (defined $plugrel); # no plugrel? no soup!
+			# no plugrel? no soup!
+			next unless (defined $plugrel);
+			# update abs table regardless of new version
+			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0)
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, del = 0",
+							undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
+			# new package, different plugrel or version, done = 0
 			next unless (! defined $db_pkgver || "$plugrel" ne "$db_plugrel" || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			my $is_done = 0;
 			# noautobuild set, assume built, done = 1
 			$is_done = 1 if ($noautobuild);
 			print "$repo/$pkg to $pkgver-$pkgrel-plug$plugrel, done = $is_done\n";
-			# update abs table
-			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0)
-                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, del = 0",
-							undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
 			# update architecture tables
 			my ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
 			$self->{dbh}->do("insert into armv5 (id, done, fail) values (?, ?, 0)
@@ -493,7 +504,7 @@ sub update {
 			#next if ($skiplist{$pkg});
 			next if ($pkg =~ /.*\-lts$/);
 			$abslist{$pkg} = 1;
-			my ($db_pkgver, $db_pkgrel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel from abs where package = ?", undef, $pkg);
+			my ($db_pkgver, $db_pkgrel, $db_skip) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, skip from abs where package = ?", undef, $pkg);
 			my $vars = `./pkgsource.sh $absroot $repo $pkg`;
 			chomp($vars);
 			my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends) = split(/\|/, $vars);
@@ -506,18 +517,18 @@ sub update {
 			# skip a bad source
 			next if (! defined $pkgver);
 			# create work unit here for non-skipped packages, to repackage abs changes without ver-rel bump
-			if (! $skiplist{$pkg}) {
+			if ($db_skip == 0) {
 				`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			}
-			# new package, different version, update, done = 0
-			next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
-			print "$repo/$pkg to $pkgver-$pkgrel\n";
 			# update abs table
 			my $is_skip = 0;
-			$is_skip = 1 if ($skiplist{$pkg});
+			$is_skip = 1 if ($db_skip);
 			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, del) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0)
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0",
 				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip);
+			# new package, different version, update, done = 0
+			next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
+			print "$repo/$pkg to $pkgver-$pkgrel\n";
 			# update architecture tables
 			my ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
 			$self->{dbh}->do("insert into armv5 (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);

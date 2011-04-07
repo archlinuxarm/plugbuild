@@ -122,7 +122,7 @@ sub Run{
                                 }
                             }
                             case "!unfail" {
-				my ($arch, $pkg) = split(/ /, $arg, 2);
+								my ($arch, $pkg) = split(/ /, $arg, 2);
                             	if ($pkg && ($arch eq "5" || $arch eq "7")) {
                             		$q_db->enqueue(['irc','unfail',$arg]);
                             	} else {
@@ -136,12 +136,26 @@ sub Run{
                             		$self->irc_priv_print("usage: !rebuild <all|some>");
                             	}
                             }
-			    case "!status" {
+							case "!status" {
                             	if ($arg) {
                             		$q_db->enqueue(['irc','status',$arg]);
                             	} else {
                             		$self->irc_priv_print("usage: !status <package>");
                             	}
+                            }
+                            case "!skip" {
+                                if ($arg) {
+                                    $q_db->enqueue(['irc','skip',$arg]);
+                                } else {
+                                    $self->irc_priv_print("usage: !skip <package>");
+                                }
+                            }
+                            case "!unskip" {
+                                if ($arg) {
+                                    $q_db->enqueue(['irc','unskip',$arg]);
+                                } else {
+                                    $self->irc_priv_print("usage: !unskip <package>");
+                                }
                             }
                         }
                     }
