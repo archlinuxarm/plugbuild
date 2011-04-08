@@ -112,7 +112,8 @@ sub Run{
             	}
             }
 			case "status" {
-				$self->status(@{$orders}[2]);
+				my ($arch, $package) = split(/ /, @{$orders}[2], 2);
+				$self->status($arch, $package);
 			}
 			case "ready" {
 			my $target = @{$orders}[2];
@@ -287,11 +288,11 @@ sub failed{
 }
 
 sub status{
-    my ($self,$package) = @_;
+    my ($self, $arch, $package) = @_;
+	$arch = "armv$arch";
     if( defined($package)){
 	if( $package ne ''){
-		# TODO: multiple arch
-	    my $sth = $self->{dbh}->prepare("select package, repo, done, fail, builder, git, abs, skip, del from abs inner join armv5 on (abs.id = armv5.id) where package = ?");
+	    my $sth = $self->{dbh}->prepare("select package, repo, done, fail, builder, git, abs, skip, del from abs inner join $arch as a on (abs.id = a.id) where package = ?");
 	    $sth->execute($package);
 	    my $ar = $sth->fetchall_arrayref();
 	    if( scalar(@{$ar}) ){ # 1 or more
@@ -306,8 +307,7 @@ sub status{
 				my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
 				my $status= sprintf("Status of package '%s' : repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
 				$status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
-				# TODO: multiple arch
-				my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail from package_name_provides as pn inner join package_depends as pd on (pn.package = pd.package) inner join armv5 as arm on (pd.dependency = arm.id) inner join abs on (arm.id = abs.id) where arm.done = 0 and pn.name = ?", undef, $name);
+				my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail from package_name_provides as pn inner join package_depends as pd on (pn.package = pd.package) inner join $arch as arm on (pd.dependency = arm.id) inner join abs on (arm.id = abs.id) where arm.done = 0 and pn.name = ?", undef, $name);
 				if ($blocklist) {
 					$status .= ", blocked on: ";
 					foreach my $blockrow (@$blocklist) {

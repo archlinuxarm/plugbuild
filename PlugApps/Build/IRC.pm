@@ -99,7 +99,7 @@ sub Run{
                                     $self->irc_priv_print("usage: !recycle <irc|database|service|all>");
                                 }
                             }
-			    case "!ready" {
+							case "!ready" {
                             	$q_db->enqueue(['irc','ready',$arg]);
                             }
                             case "!unfuck" {
@@ -137,10 +137,11 @@ sub Run{
                             	}
                             }
 							case "!status" {
-                            	if ($arg) {
+								my ($arch, $pkg) = split(/ /, $arg, 2);
+                            	if ($pkg && ($arch eq "5" || $arch eq "7")) {
                             		$q_db->enqueue(['irc','status',$arg]);
                             	} else {
-                            		$self->irc_priv_print("usage: !status <package>");
+                            		$self->irc_priv_print("usage: !status <5|7> <package>");
                             	}
                             }
                             case "!skip" {
