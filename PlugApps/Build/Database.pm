@@ -383,13 +383,14 @@ sub pkg_fail {
 # unfail package or all
 sub pkg_unfail {
 	my ($self, $arch, $package) = @_;
+	my $rows;
 	$arch = "armv$arch";
 	if ($package eq "all") {
-		$self->{dbh}->do("update $arch set fail = 0, done = 0, builder = null where fail = 1");
+		$rows = $self->{dbh}->do("update $arch set fail = 0, done = 0, builder = null where fail = 1");
 	} else {
-		$self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.fail = 0, a.done = 0, a.builder = null where abs.package = ?", undef, $package);
+		$rows = $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.fail = 0, a.done = 0, a.builder = null where abs.package = ?", undef, $package);
 	}
-	if ($self->{dbh}->rows() < 1) {
+	if ($rows < 1) {
 		$q_irc->enqueue(['db','print',"Couldn't unfail $package for $arch"]);
 	} else {
 		$q_irc->enqueue(['db','print',"Unfailed $package for $arch"]);
@@ -399,8 +400,8 @@ sub pkg_unfail {
 # modify package to be (un)skipped
 sub pkg_skip {
 	my ($self, $pkg, $op) = @_;
-	$self->{dbh}->do("update abs set skip = ? where package = ?", undef, $op, $pkg);
-	if ($self->{dbh}->rows() < 1) {
+	my $rows = $self->{dbh}->do("update abs set skip = ? where package = ?", undef, $op, $pkg);
+	if ($rows < 1) {
 		$q_irc->enqueue(['db','print',"Couldn't modify $pkg, check the name."]);
 	} else {
 		$q_irc->enqueue(['db','print',sprintf("%s %s", $op?"Skipped":"Unskipped", $pkg)]);
