@@ -307,12 +307,12 @@ sub status{
 				my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
 				my $status= sprintf("Status of package '%s' : repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
 				$status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
-				my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail from package_name_provides as pn inner join package_depends as pd on (pn.package = pd.package) inner join $arch as arm on (pd.dependency = arm.id) inner join abs on (arm.id = abs.id) where arm.done = 0 and pn.name = ?", undef, $name);
+				my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail, abs.skip, abs.del from package_name_provides as pn inner join package_depends as pd on (pn.package = pd.package) inner join $arch as arm on (pd.dependency = arm.id) inner join abs on (arm.id = abs.id) where arm.done = 0 and pn.name = ?", undef, $name);
 				if ($blocklist) {
 					$status .= ", blocked on: ";
 					foreach my $blockrow (@$blocklist) {
-						my ($blockrepo, $blockpkg, $blockfail) = @$blockrow;
-						$status .= sprintf("%s/%s (%s) ", $blockrepo, $blockpkg, $blockfail?"F":"N");
+						my ($blockrepo, $blockpkg, $blockfail, $blockskip, $blockdel) = @$blockrow;
+						$status .= sprintf("%s/%s (%s) ", $blockrepo, $blockpkg, $blockdel?"D":$blockskip?"S":$blockfail?"F":"N");
 					}
 				}
 				$q_irc->enqueue(['db','print',$status]);
@@ -511,7 +511,7 @@ sub update {
 			my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends) = split(/\|/, $vars);
 			if ($gitlist{$pkg}) {
 				if ("$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
-					$q_irc->enqueue(['db','print',"$pkg is out of date in git, git = $db_pkgver-$db_pkgrel, abs = $pkgver-$pkgrel"]);
+					$q_irc->enqueue(['db','print',"$pkg is different in git, git = $db_pkgver-$db_pkgrel, abs = $pkgver-$pkgrel"]);
 				}
 				next;
 			}
