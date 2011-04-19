@@ -558,7 +558,7 @@ sub update {
 			$name =~ s/(<|=|>).*//;
 			$self->{dbh}->do("insert into package_name_provides (name, provides, package) values (?, 0, ?)", undef, $name, $id);
 		}
-		if ($provides) {
+		if ($provides ne "") {
 			foreach my $name (split(/ /, $provides)) {
 				$name =~ s/(<|=|>).*//;
 				$self->{dbh}->do("insert into package_name_provides (name, provides, package) values (?, 1, ?)", undef, $name, $id);
