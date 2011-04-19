@@ -299,7 +299,7 @@ sub status{
 			foreach my $r (@{$ar}){
 				my ($name, $repo, $done, $fail, $builder, $git, $abs, $skip, $del) = @{$r};
 				my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
-				if( $builder ne '' && $state eq 'unbuilt'){
+				if($builder && $state eq 'unbuilt'){
 					$state = 'building';
 				}
 				$state = "skipped" if ($skip);
@@ -518,7 +518,7 @@ sub update {
 			# skip a bad source
 			next if (! defined $pkgver);
 			# create work unit here for non-skipped packages, to repackage abs changes without ver-rel bump
-			if ($db_skip == 0) {
+			if ($db_skip && $db_skip == 0) {
 				`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			}
 			# update abs table
