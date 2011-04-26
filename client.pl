@@ -1,27 +1,20 @@
 #!/usr/bin/perl
 
-# plugbuild client #4
-#
-# TODO:
-#  - script auto-update from plugbuild server, maintain $builder on update
-#  - enable logging again
-#  - cut out all the command output, do a spinner to show we're still kicking
-#  - keep server tcp connection open, block and reconnect if we lose it
-#  - sftp/scp package uploading
-#  - ncurses?
+# plugbuild client #9001
 
 use strict;
 use IO::Socket;
 use FindBin qw($Bin);
 
-# SET ME! your builder name
+# SET ME! your builder name, architecture (armv5 or armv7)
 my $builder = "kevin";
+my $arch = "armv5";
 
 # other variables, probably shouldn't touch these
-my $makepkg = "PACMAN_OPTS='-f' makepkg -AcsfL --asroot --noconfirm";
+my $makepkg = "PACMAN_OPTS='-f' makepkg -AcsfrL --asroot --noconfirm";
 my $workroot = "$Bin/work";
 my $pkgdest = "$Bin/pkgdest";
-my $workurl = "http://dev2.plugapps.com/plugbuild/work";
+my $workurl = "http://plugboxlinux.org/plugbuild/work";
 
 # talk to server, return its reply
 sub talk {
@@ -29,7 +22,7 @@ sub talk {
 	
 	while (1) {
 		my $sock = new IO::Socket::INET (
-			PeerAddr => 'dev2.plugapps.com',
+			PeerAddr => 'plugboxlinux.org',
 			PeerPort => '2121',
 			Proto => 'tcp',
 		);
@@ -69,6 +62,15 @@ sub check_deps {
 		next if ($dep eq "glibc");
 		next if ($dep eq "kernel26");
 		next if ($dep eq "perl");
+		next if ($dep eq "ghc");
+		next if ($dep eq "texlive-core");
+		next if ($dep eq "qt");
+		next if ($dep eq "mesa-demos");
+		next if ($dep eq "openjdk6" || $dep eq "java-runtime" || $dep eq "java-environment");
+		next if ($dep eq "ca-certificates-java");
+		next if ($dep eq "ca-certificates");
+		next if ($dep eq "mono");
+		next if ($dep eq "kdelibs");
 		if (!check_pacman($dep)) {
 			push @list, $dep;
 		}
@@ -90,8 +92,7 @@ my $done = 1;
 $SIG{INT} = \&catcher;
 sub catcher {
 	$SIG{INT} = \&catcher;
-	$done = 0;
-	holyshitprint "Got your Ctrl+C, I'll die after this package :D";
+	print "control si\n"
 }
 
 while ($done) {
@@ -102,7 +103,7 @@ while ($done) {
 	`rm -rf $pkgdest; mkdir $pkgdest`;
 
 	# 1. ask for a package to build
-	my $reply = talk("new!$builder");
+	my $reply = talk("new!$arch|$builder");
 	if ($reply eq "FAIL") {
 		print "\n\nSomething horrible happened..\n";
 		last;
@@ -115,15 +116,16 @@ while ($done) {
 	system("wget $workurl/$unit.tgz");
 	print " -> extracting work unit\n";
 	system("tar -zxf $workroot/$unit.tgz");
+#	system("sed -i 's|\./configure|PYTHON=\"/usr/bin/python2\" \./configure|g' $workroot/$package/PKGBUILD");
 	
 	# 3. reinstall of existing dependencies
-	if ($deps) {
-		if (check_deps($deps)) {
-			holyshitprint " !!! pacman failed to reinstall existing dependencies\n";
-			talk("fail!$package");
-			next;
-		}
-	}
+#	if ($deps) {
+#		if (check_deps($deps)) {
+#			holyshitprint " !!! pacman failed to reinstall existing dependencies\n";
+#			talk("fail!$arch|$package");
+#			next;
+#		}
+#	}
 	
 	# 4. build package
 	chdir "$workroot/$package";
@@ -135,13 +137,13 @@ while ($done) {
 	}
 	if ($? >> 8) {
 		print " !! $package build failed\n";
-		my $reply = talk("fail!$package");
+		my $reply = talk("fail!$arch|$package");
 		print "    -> reported fail: $reply\n";
 		### upload log
 		my ($logfile) = glob("$workroot/$package/*-arm-build.log");
 		if ($logfile) {
 			print " -> uploading $logfile\n";
-			my $result = `curl --form uploaded=\@$logfile --form press=Upload http://dev2.plugapps.com:81/plugbuild/uplog.php`;
+			my $result = `curl --form uploaded=\@$logfile --form press=Upload http://plugboxlinux.org:81/plugbuild/uplog.php`;
 			if ($result eq "FAIL") {
 				print "    -> failed\n";
 			}
@@ -151,44 +153,46 @@ while ($done) {
 	
 	# 5. upload package(s)
 	my $uploaded = 0;
-	foreach my $filename (glob("$pkgdest/*")) {
-		$filename =~ s/^\/.*\///;
-		next if ($filename eq "");
-		my $md5sum_file = `md5sum $pkgdest/$filename`;
-		$md5sum_file = (split(/ /, $md5sum_file))[0];
-		print " -> uploading $filename ($md5sum_file)\n";
-		my $result = `curl --retry 5 --form uploaded=\@$pkgdest/$filename --form press=Upload http://dev2.plugapps.com:81/plugbuild/uppkg.php`;
-		chomp($result);
-		if ($result eq "ERROR") {
-			holyshitprint "    -> failed to upload";
-			$uploaded = 0;
-			last;
+	while ($uploaded == 0) {
+		foreach my $filename (glob("$pkgdest/*")) {
+			$filename =~ s/^\/.*\///;
+			next if ($filename eq "");
+			my $md5sum_file = `md5sum $pkgdest/$filename`;
+			$md5sum_file = (split(/ /, $md5sum_file))[0];
+			print " -> uploading $filename ($md5sum_file)\n";
+			my $result = `curl --retry 5 --form uploaded=\@$pkgdest/$filename --form press=Upload http://plugboxlinux.org:81/plugbuild/uppkg.php`;
+			chomp($result);
+			if ($result eq "ERROR") {
+				print "    -> failed to upload";
+				$uploaded = 0;
+				last;
+			}
+			
+			my $reply = talk("add!$arch|$repo|$package|$filename|$md5sum_file");
+			if ($reply eq "FAIL") {
+				print "    -> server failure: add!$repo|$package|$filename|$md5sum_file";
+				$uploaded = 0;
+				last;
+			}
+			$uploaded = 1;
 		}
-		
-		my $reply = talk("add!$repo|$package|$filename|$md5sum_file");
-		if ($reply eq "FAIL") {
-			holyshitprint "    -> server failure: add!$repo|$package|$filename|$md5sum_file";
-			$uploaded = 0;
-			last;
-		}
-		$uploaded = 1;
 	}
 
 	### upload log
-	my ($logfile) = glob("$workroot/$package/*-arm-build.log");
-	if ($logfile) {
-		print " -> uploading $logfile\n";
-		my $result = `curl --form uploaded=\@$logfile --form press=Upload http://dev2.plugapps.com:81/plugbuild/uplog.php`;
-		if ($result eq "FAIL") {
-			print "    -> failed\n";
-		}
-	}
+	#my ($logfile) = glob("$workroot/$package/*-arm-build.log");
+	#if ($logfile) {
+	#	print " -> uploading $logfile\n";
+	#	my $result = `curl --form uploaded=\@$logfile --form press=Upload http://plugboxlinux.org:81/plugbuild/uplog.php`;
+	#	if ($result eq "FAIL") {
+	#		print "    -> failed\n";
+	#	}
+	#}
 		
 	
 	# 6. notify server that i'm done
 	if ($uploaded) {
 		print " -> notifying server of completion\n";
-		my $reply = talk("done!$package");
+		my $reply = talk("done!$arch|$package");
 		if ($reply eq "FAIL") {
 			holyshitprint "    -> server failure: done!$package";
 			next;
