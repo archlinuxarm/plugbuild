@@ -148,7 +148,7 @@ sub connect {
         my $database = $self->{mysql};
 		my $user = $self->{user};
 		my $pass = $self->{pass};
-        my $db = DBI->connect("dbi:mysql:$database", "$user", "$pass", {RaiseError => 0, AutoCommit => 1});
+        my $db = DBI->connect("dbi:mysql:$database", "$user", "$pass", {RaiseError => 0, AutoCommit => 1, mysql_auto_reconnect => 1});
         if( defined($db) ){
             # store our handle
             $self->{dbh} = $db;
@@ -518,7 +518,7 @@ sub update {
 			# skip a bad source
 			next if (! defined $pkgver);
 			# create work unit here for non-skipped packages, to repackage abs changes without ver-rel bump
-			if ($db_skip && $db_skip == 0) {
+			if (defined $db_skip && $db_skip == 0) {
 				`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			}
 			# update abs table
