@@ -475,7 +475,6 @@ sub update {
 							undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
 			# create work unit package regardless of new version
 			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
-			$git_count++;
 			# new package, different plugrel or version, done = 0
 			next unless (! defined $db_pkgver || "$plugrel" ne "$db_plugrel" || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			my $is_done = 0;
@@ -490,6 +489,7 @@ sub update {
 			$self->{dbh}->do("insert into armv7 (id, done, fail) values (?, ?, 0)
                               on duplicate key update done = ?, fail = 0",
 							undef, $db_id, $is_done, $is_done);
+			$git_count++;
 		}
 	}
 	
