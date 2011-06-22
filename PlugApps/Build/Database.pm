@@ -473,6 +473,9 @@ sub update {
 			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0)
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, del = 0",
 							undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
+			# create work unit package regardless of new version
+			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
+			$git_count++;
 			# new package, different plugrel or version, done = 0
 			next unless (! defined $db_pkgver || "$plugrel" ne "$db_plugrel" || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			my $is_done = 0;
@@ -487,9 +490,6 @@ sub update {
 			$self->{dbh}->do("insert into armv7 (id, done, fail) values (?, ?, 0)
                               on duplicate key update done = ?, fail = 0",
 							undef, $db_id, $is_done, $is_done);
-			# create work unit package
-			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
-			$git_count++;
 		}
 	}
 	
@@ -517,8 +517,8 @@ sub update {
 			}
 			# skip a bad source
 			next if (! defined $pkgver);
-			# create work unit here for non-skipped packages, to repackage abs changes without ver-rel bump
-			if (defined $db_skip && $db_skip == 0) {
+			# create work unit here for non-skipped and new packages, to repackage abs changes without ver-rel bump
+			if ((defined $db_skip && $db_skip == 0) || (! defined $db_skip)) {
 				`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			}
 			# update abs table
