@@ -48,6 +48,7 @@ sub Run {
 						my ($who,$response,$what) = @{$qm}[2,3,4];
 						print "   -> builder $who: $response\n";
 						my $cs = $wait_next{$who};
+						last if (! defined $cs); # bail out if client disconnected early
 						print $cs "$response\n";
 						if ($response ne "FAIL") {
 							$q_irc->enqueue(['svc','print',"[new] builder: $who - package: $response"]);
