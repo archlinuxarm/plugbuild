@@ -30,6 +30,7 @@ sub Run {
 	# set up irc client
 	$self->{condvar} = AnyEvent->condvar;
 	my $con = new AnyEvent::IRC::Client;
+	$self->{con} = $con;
 	
 	# enable ssl connection (config option)
 	$con->enable_ssl() if ($self->{ssl});
@@ -41,7 +42,7 @@ sub Run {
 	$con->reg_cb(publicmsg	=> sub { $self->cb_publicmsg(@_); });
 	
 	# arm thread queue timer
-	$self->{queue_timer} = AnyEvent->timer(after => .5, cb => sub { cb_queue($con); });
+	$self->{queue_timer} = AnyEvent->timer(after => .5, cb => sub { cb_queue(); });
 	
 	# connect, loop
 	$self->connect($con);
@@ -68,7 +69,7 @@ sub connect {
 # send a line to the build channel
 sub irc_priv_print {
     my ($self, $msg) = @_;
-    print {$self->{socket}} "PRIVMSG #".$self->{channel}." :$msg\n";
+    $self->{con}->send_msg(PRIVMSG => '#'.$self->{channel}, "$msg");
 }
 
 # callback for socket connection - sleep and reconnect on error
@@ -217,14 +218,14 @@ sub cb_queue {
 			}
 		}
 		if ($order eq 'quit' || $order eq 'recycle'){
-			$con->disconnect("shutdown");
+			$self->{con}->disconnect("shutdown");
 			$self->{condvar}->broadcast;
 			return;
 		}
 	}
 	
 	# re-arm the timer
-	$self->{queue_timer} = AnyEvent->timer(after => .5, cb => sub { cb_queue($con); });
+	$self->{queue_timer} = AnyEvent->timer(after => .5, cb => sub { cb_queue(); });
 }
 
 1;
