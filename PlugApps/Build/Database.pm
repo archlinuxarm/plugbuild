@@ -116,24 +116,26 @@ sub Run{
 				$self->status($arch, $package);
 			}
 			case "ready" {
-			my $target = @{$orders}[2];
-			my ($detail,$which) = split(/\s/,$target);
-			if( $target eq 'detail' || $detail eq 'detail'){
-				my $ready = $self->ready_detail($which);
-					$q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
-				if( $ready->[0] > 1){
-				$q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
-				}
-			}else{
-				my $ready = $self->ready();
-				if( defined($ready->[0]) ){
-					#$ready = $ready?$ready:"none";
-					$q_irc->enqueue(['db','print',"Packages waiting to be built: ARMv5: $ready->[0], ARMv7: $ready->[1]"]);
-				}else{
-					$q_irc->enqueue(['db','print','ready: unknown error.']);
-				}
-			}
-	    }
+                if (defined @{$orders}[2]) {
+        			my $target = @{$orders}[2];
+        			my ($detail,$which) = split(/\s/,$target);
+        			if ($target eq 'detail' || $detail eq 'detail') {
+        				my $ready = $self->ready_detail($which);
+        				$q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
+        				if( $ready->[0] > 1) {
+        				    $q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
+        				}
+        			}
+        		} else {
+    				my $ready = $self->ready();
+    				if( defined($ready->[0]) ){
+    					#$ready = $ready?$ready:"none";
+    					$q_irc->enqueue(['db','print',"Packages waiting to be built: ARMv5: $ready->[0], ARMv7: $ready->[1]"]);
+    				}else{
+    					$q_irc->enqueue(['db','print','ready: unknown error.']);
+    				}
+    			}
+    	    }
         }
     }
     ##
