@@ -472,8 +472,8 @@ sub update {
 			# no plugrel? no soup!
 			next unless (defined $plugrel);
 			# update abs table regardless of new version
-			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0)
-                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, del = 0",
+			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0)
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = 0, del = 0",
 							undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
 			# create work unit package regardless of new version
 			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
@@ -539,14 +539,17 @@ sub update {
 			$abs_count++;
 		}
 	}
+    
 	# prune git/abs in db
-	my $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from abs");
+    my $del_count = 0;
+	my $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from abs where del = 0");
 	foreach my $row (@$rows) {
 		my ($pkg, $git, $abs) = @$row;
 		next if ($git && $gitlist{$pkg});
 		next if ($abs && $abslist{$pkg});
 		print "del flag on $pkg\n";
 		$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+        $del_count++;
 	}
 	
 	# build package_name_provides
