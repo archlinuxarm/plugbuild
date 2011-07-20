@@ -1,4 +1,7 @@
 #!/usr/bin/perl -w
+#
+# PlugBuild IRC bot
+#
 use strict;
 
 package PlugApps::Build::IRC;
