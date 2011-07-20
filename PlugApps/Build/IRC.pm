@@ -1,7 +1,8 @@
 #!/usr/bin/perl -w
 #
-# PlugBuild IRC bot
+# PlugBuild IRC Interface
 #
+
 use strict;
 
 package PlugApps::Build::IRC;
@@ -42,7 +43,7 @@ sub Run {
 	$con->reg_cb(publicmsg	=> sub { $self->cb_publicmsg(@_); });
 	
 	# arm thread queue timer
-	$self->{queue_timer} = AnyEvent->timer(interval => .5, cb => sub { cb_queue(); });
+	my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
 	
 	# connect, loop
 	$self->connect($con);
@@ -78,7 +79,8 @@ sub cb_connect {
 	if (defined $error) {
 		$available->up();
 		warn "IRC: connect error: $error\n";
-		$self->{irc_timer} = AnyEvent->timer(after => 15, cb => sub { $self->connect($con); });
+		sleep 15;
+		$self->connect($con);
 	}
 }
 
@@ -88,7 +90,8 @@ sub cb_disconnect {
 	warn "IRC: disconnected: $reason\n";
 	return if ($reason eq "shutdown");
 	$available->up();
-	$self->{irc_timer} = AnyEvent->timer(after => 15, cb => sub { $self->connect($con); });
+	sleep 15;
+	$self->connect($con);
 }
 
 # callback after registered to server
