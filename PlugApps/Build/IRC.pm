@@ -88,8 +88,9 @@ sub cb_connect {
 sub cb_disconnect {
 	my ($self, $con, $reason) = @_;
 	warn "IRC: disconnected: $reason\n";
-	return if ($reason eq "shutdown");
+	return if ($reason eq "quit");
 	$available->up();
+	return if ($reason eq "recycle");
 	sleep 15;
 	$self->connect($con);
 }
@@ -221,7 +222,7 @@ sub cb_queue {
 			}
 		}
 		if ($order eq 'quit' || $order eq 'recycle'){
-			$self->{con}->disconnect("shutdown");
+			$self->{con}->disconnect($order);
 			$self->{condvar}->broadcast;
 			return;
 		}
