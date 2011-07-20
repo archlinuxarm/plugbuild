@@ -43,11 +43,13 @@ sub Run {
 	$con->reg_cb(publicmsg	=> sub { $self->cb_publicmsg(@_); });
 	
 	# arm thread queue timer
-	my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
+	$self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
 	
 	# connect, loop
 	$self->connect($con);
 	$self->{condvar}->wait;
+    
+    # termination following a broadcast
     print "IrcRunEnd\n";
     return $orders;
 }
@@ -222,6 +224,7 @@ sub cb_queue {
 			}
 		}
 		if ($order eq 'quit' || $order eq 'recycle'){
+            undef $self->{timer};
 			$self->{con}->disconnect($order);
 			$self->{condvar}->broadcast;
 			return;
