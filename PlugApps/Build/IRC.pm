@@ -42,7 +42,7 @@ sub Run {
 	$con->reg_cb(publicmsg	=> sub { $self->cb_publicmsg(@_); });
 	
 	# arm thread queue timer
-	$self->{queue_timer} = AnyEvent->timer(after => .5, cb => sub { cb_queue(); });
+	$self->{queue_timer} = AnyEvent->timer(interval => .5, cb => sub { cb_queue(); });
 	
 	# connect, loop
 	$self->connect($con);
@@ -223,9 +223,6 @@ sub cb_queue {
 			return;
 		}
 	}
-	
-	# re-arm the timer
-	$self->{queue_timer} = AnyEvent->timer(after => .5, cb => sub { cb_queue(); });
 }
 
 1;
