@@ -45,7 +45,7 @@ sub Run{
             case "count" { #generally recv'd from irc..
                 my $table = @{$orders}[2];
                 my $count = $self->count($table);
-                $q_irc->enqueue(['db','count',$table,$count]);
+                $q_irc->enqueue(['db','print',"$table has $count"]);
             }
             case "percent_done" { #generally recv'd from irc..
                 my $table = @{$orders}[2];
@@ -93,7 +93,7 @@ sub Run{
             }
             case "update" { # generally recv'd from irc
             	$self->update();
-            	$q_irc->enqueue(['db', 'update', 'done']);
+            	$q_irc->enqueue(['db', 'print', 'Update: done']);
             }
 			case "skip" { # from irc
 				$self->pkg_skip(@{$orders}[2], 1);
@@ -550,7 +550,7 @@ sub update {
 	}
 	
 	# build package_name_provides
-	$q_irc->enqueue(['db', 'update', "Updated $git_count from git, $abs_count from abs. Rebuilding depends.."]);
+	$q_irc->enqueue(['db', 'print', "Updated $git_count from git, $abs_count from abs. Rebuilding depends.."]);
 	print "building package_name_provides..\n";
 	$rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from abs where del = 0 and skip = 0");
 	$self->{dbh}->do("delete from package_name_provides");

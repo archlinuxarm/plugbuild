@@ -195,26 +195,6 @@ sub cb_queue {
 		my ($from, $order) = @{$msg};
 		print "IRC[$from $order]\n";
 		switch($order){
-			case "count" {
-				my ($tbl,$cnt) = @{$msg}[2,3];
-				$self->irc_priv_print("$tbl has $cnt");
-			}
-			case "percent_done" {
-				my ($done,$cnt) = @{$msg}[2,3];
-				$self->irc_priv_print("Successful builds: $done of $cnt, ".sprintf("%0.2f%%",($done/$cnt)*100));
-			}
-			case "percent_failed" {
-				my ($done,$cnt) = @{$msg}[2,3];
-				$self->irc_priv_print("Failed builds: $done of $cnt, ".sprintf("%0.2f%%",($done/$cnt)*100));
-			}
-			case "new" {
-				my ($builder,$package) = @{$msg}[2,3];
-				$self->irc_priv_print("$builder");
-			}
-			case "update" {
-				my ($status) = @{$msg}[2];
-				$self->irc_priv_print("Update: $status");
-			}
 			case "print" {
 				my ($data) = @{$msg}[2];
 				$self->irc_priv_print("$data");
