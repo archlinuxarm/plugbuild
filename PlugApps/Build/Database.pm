@@ -548,7 +548,7 @@ sub update {
 
 sub update_continue {
     my ($self, $list) = @_;
-    my %dellist = undef;
+    my %dellist;
     
     # use the list provided or pull from self after warning
     if (defined $list) {
