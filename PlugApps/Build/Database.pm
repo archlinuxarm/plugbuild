@@ -560,10 +560,8 @@ sub update_continue {
     }
     
     # prune abs table of deleted packages
-    if (defined %dellist) {
-        foreach my $pkg (keys %dellist) {
-            $self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
-        }
+    foreach my $pkg (keys %dellist) {
+        $self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
     }
     
     # build package_name_provides
@@ -609,17 +607,14 @@ sub review {
     my $self = shift;
     my %newlist = %{$self->{newlist}};
     my %dellist = %{$self->{dellist}};
-    my $new = '', $del = '';
+    my $new = '';
+    my $del = '';
     
-    if (defined %newlist) {
-        foreach my $pkg (keys %newlist) {
-            $new .= " $pkg";
-        }
+    foreach my $pkg (keys %newlist) {
+        $new .= " $pkg";
     }
-    if (defined %dellist) {
-        foreach my $pkg (keys %dellist) {
-            $del .= " $pkg";
-        }
+    foreach my $pkg (keys %dellist) {
+        $del .= " $pkg";
     }
     $q_irc->enqueue(['db', 'print', scalar(keys %newlist) . " new:$new"]);
     $q_irc->enqueue(['db', 'print', scalar(keys %dellist) . " deleted:$del"]);
