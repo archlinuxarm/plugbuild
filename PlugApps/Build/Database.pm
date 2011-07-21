@@ -537,7 +537,7 @@ sub update {
     $q_irc->enqueue(['db', 'print', "Updated $git_count from git, $abs_count from abs. " . scalar(keys %newlist)  . " new, " . scalar(keys %dellist) . " removed."]);
     
     # switch on deletion limit
-    if (scalar(keys %dellist) > 10)
+    if (scalar(keys %dellist) > 10) {
         $self->{dellist} = \%dellist;
         $self->{newlist} = \%newlist;
         $q_irc->enqueue(['db', 'print', "Warning: " . scalar(keys %dellist) . " packages to be deleted : !review and/or !continue"]);
