@@ -131,6 +131,25 @@ sub cb_publicmsg {
     if ($params[0] && $params[0] eq '#'.$self->{channel} && $params[1] && $params[1] =~ /^\!.*/) {
         my ($trigger, $arg) = split(/ /, $params[1], 2);
         switch ($trigger) {
+            case "!contine" {
+                $q_db->enqueue(['irc', 'continue']);
+            }
+            case "!count" {
+                if ($arg) {
+                    $q_db->enqueue(['irc','count',$arg]);
+                } else {
+                    $self->irc_priv_print("usage: !count <table>");
+                }
+            }
+            case "!done" {
+                $q_db->enqueue(['irc','percent_done',$arg]);
+            }
+            case "!failed" {
+                $q_db->enqueue(['irc','percent_failed',$arg]);
+            }
+            case "!ready" {
+                $q_db->enqueue(['irc','ready',$arg]);
+            }
             case "!recycle" {
                 if($arg){
                     $q_irc->enqueue(['irc','recycle']) if $arg eq 'irc' || $arg eq 'all';
@@ -140,23 +159,22 @@ sub cb_publicmsg {
                     $self->irc_priv_print("usage: !recycle <irc|database|service|all>");
                 }
             }
-            case "!ready" {
-                $q_db->enqueue(['irc','ready',$arg]);
+            case "!review" {
+                $q_db->enqueue(['irc','review']);
             }
-            case "!update" {
-                $q_db->enqueue(['irc','update']);
-            }
-            case "!done" {
-                $q_db->enqueue(['irc','percent_done',$arg]);
-            }
-            case "!failed" {
-                $q_db->enqueue(['irc','percent_failed',$arg]);
-            }
-            case "!count" {
+            case "!skip" {
                 if ($arg) {
-                    $q_db->enqueue(['irc','count',$arg]);
+                    $q_db->enqueue(['irc','skip',$arg]);
                 } else {
-                    $self->irc_priv_print("usage: !count <table>");
+                    $self->irc_priv_print("usage: !skip <package>");
+                }
+            }
+            case "!status" {
+                my ($arch, $pkg) = split(/ /, $arg, 2);
+                if ($pkg && ($arch eq "5" || $arch eq "7")) {
+                    $q_db->enqueue(['irc','status',$arg]);
+                } else {
+                    $self->irc_priv_print("usage: !status <5|7> <package>");
                 }
             }
             case "!unfail" {
@@ -167,33 +185,15 @@ sub cb_publicmsg {
                     $self->irc_priv_print("usage: !unfail <5|7> <package|all>");
                 }
             }
-            case "!review" {
-                $q_db->enqueue(['irc','review']);
-            }
-            case "!contine" {
-                $q_db->enqueue(['irc', 'continue']);
-            }
-            case "!status" {
-                my ($arch, $pkg) = split(/ /, $arg, 2);
-                if ($pkg && ($arch eq "5" || $arch eq "7")) {
-                    $q_db->enqueue(['irc','status',$arg]);
-                } else {
-                    $self->irc_priv_print("usage: !status <5|7> <package>");
-                }
-            }
-            case "!skip" {
-                if ($arg) {
-                    $q_db->enqueue(['irc','skip',$arg]);
-                } else {
-                    $self->irc_priv_print("usage: !skip <package>");
-                }
-            }
             case "!unskip" {
                 if ($arg) {
                     $q_db->enqueue(['irc','unskip',$arg]);
                 } else {
                     $self->irc_priv_print("usage: !unskip <package>");
                 }
+            }
+            case "!update" {
+                $q_db->enqueue(['irc','update']);
             }
         }
     }
