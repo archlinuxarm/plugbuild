@@ -42,79 +42,29 @@ sub Run{
             last;
         }
         switch ($order) {
-            case "count" { #generally recv'd from irc..
+            # irc orders
+            case "continue" {
+                if (defined $self->{dellist}) {
+                    $self->update_continue();
+                } else {
+                    $q_irc->enqueue(['db','print',"No pending update."]);
+                }
+            }
+            case "count" {
                 my $table = @{$orders}[2];
                 my $count = $self->count($table);
                 $q_irc->enqueue(['db','print',"$table has $count"]);
             }
-            case "percent_done" { #generally recv'd from irc..
+            case "percent_done" {
                 my $table = @{$orders}[2];
                 my ($done,$count) = ($self->done(),$self->count('abs'));
                 $q_irc->enqueue(['db','print',"Successful builds: ARMv5: $done->[0] of $count, ".sprintf("%0.2f%%",($done->[0]/$count)*100)." | ARMv7: $done->[1] of $count, ".sprintf("%0.2f%%",($done->[1]/$count)*100)]);
             }
-            case "percent_failed" { #generally recv'd from irc..
+            case "percent_failed" {
                 my $table = @{$orders}[2];
                 my ($done,$count) = ($self->failed(),$self->count('abs'));
                 $q_irc->enqueue(['db','print',"Failed builds: ARMv5: $done->[0] of $count, ".sprintf("%0.2f%%",($done->[0]/$count)*100)." | ARMv7: $done->[1] of $count, ".sprintf("%0.2f%%",($done->[1]/$count)*100)]);
             }
-            case "next" { #generally recv'd from svc
-                my ($arch, $builder) = split(/\|/, @{$orders}[2]);
-                my $next = $self->get_next_package($builder, $arch);
-                if( $next ){
-                    my $pkg = join('-',@{$next}[0,1]).'!'.join(' ',@{$next}[2,3]);
-                    printf("DbRespond:next:%s\n",$pkg);
-                    $self->pkg_work(@{$next}[1], $builder, $arch);
-                    $q_svc->enqueue(['db','next',@{$orders}[2],$pkg]);
-                }else{
-                    $q_svc->enqueue(['db','next',@{$orders}[2],'FAIL']);
-                }
-            }
-            case "add" { # from svc
-				my $pkg = @{$orders}[2];
-            	if ($self->pkg_add($pkg)) {
-            		$q_svc->enqueue(['db','add',$pkg,'FAIL']);
-            	} else {
-            		$q_svc->enqueue(['db','add',$pkg,'OK']);
-            	}
-            }
-            case "unfail" { # from irc
-				my ($arch, $package) = split(/ /, @{$orders}[2], 2);
-            	$self->pkg_unfail($arch, $package);
-            }
-            case "done" { # from svc
-            	$self->pkg_done(@{$orders}[2]);
-            }
-            case "fail" { # from svc
-            	$self->pkg_fail(@{$orders}[2]);
-            }
-            case "unfuck" { # from irc
-            	#$self->unfuck();
-            	$q_irc->enqueue(['db', 'print', 'operation unfuck in progress, sir!']);
-            }
-            case "update" { # generally recv'd from irc
-            	$self->update();
-            	$q_irc->enqueue(['db', 'print', 'Update: done']);
-            }
-			case "skip" { # from irc
-				$self->pkg_skip(@{$orders}[2], 1);
-			}
-			case "unskip" { # from irc
-				$self->pkg_skip(@{$orders}[2], 0);
-			}
-            case "rebuild" {
-            	my $target = @{$orders}[2];
-            	if ($target eq "all") {
-            		$self->rebuild_all();
-            	} elsif ($target eq "some") {
-            		$self->rebuild_some();
-            	} else {
-            		$q_irc->enqueue(['db','print','Usage: !rebuild <all|some>']);
-            	}
-            }
-			case "status" {
-				my ($arch, $package) = split(/ /, @{$orders}[2], 2);
-				$self->status($arch, $package);
-			}
 			case "ready" {
                 if (defined @{$orders}[2]) {
         			my $target = @{$orders}[2];
@@ -129,13 +79,64 @@ sub Run{
         		} else {
     				my $ready = $self->ready();
     				if( defined($ready->[0]) ){
-    					#$ready = $ready?$ready:"none";
     					$q_irc->enqueue(['db','print',"Packages waiting to be built: ARMv5: $ready->[0], ARMv7: $ready->[1]"]);
     				}else{
     					$q_irc->enqueue(['db','print','ready: unknown error.']);
     				}
     			}
     	    }
+            case "review" {
+                if (defined $self->{dellist}) {
+                    $self->review();
+                } else {
+                    $q_irc->enqueue(['db','print',"No review available."]);
+                }
+            }
+			case "skip" {
+				$self->pkg_skip(@{$orders}[2], 1);
+			}
+			case "status" {
+				my ($arch, $package) = split(/ /, @{$orders}[2], 2);
+				$self->status($arch, $package);
+			}
+            case "unfail" {
+				my ($arch, $package) = split(/ /, @{$orders}[2], 2);
+            	$self->pkg_unfail($arch, $package);
+            }
+			case "unskip" {
+				$self->pkg_skip(@{$orders}[2], 0);
+			}
+            case "update" {
+            	$self->update();
+            }
+            
+            # service orders
+            case "add" {
+				my $pkg = @{$orders}[2];
+            	if ($self->pkg_add($pkg)) {
+            		$q_svc->enqueue(['db','add',$pkg,'FAIL']);
+            	} else {
+            		$q_svc->enqueue(['db','add',$pkg,'OK']);
+            	}
+            }
+            case "done" {
+            	$self->pkg_done(@{$orders}[2]);
+            }
+            case "fail" {
+            	$self->pkg_fail(@{$orders}[2]);
+            }
+            case "next" {
+                my ($arch, $builder) = split(/\|/, @{$orders}[2]);
+                my $next = $self->get_next_package($builder, $arch);
+                if( $next ){
+                    my $pkg = join('-',@{$next}[0,1]).'!'.join(' ',@{$next}[2,3]);
+                    printf("DbRespond:next:%s\n",$pkg);
+                    $self->pkg_work(@{$next}[1], $builder, $arch);
+                    $q_svc->enqueue(['db','next',@{$orders}[2],$pkg]);
+                }else{
+                    $q_svc->enqueue(['db','next',@{$orders}[2],'FAIL']);
+                }
+            }
         }
     }
     ##
@@ -446,7 +447,7 @@ sub unfuck {
 
 sub update {
 	my $self = shift;
-	my (%gitlist, %abslist);
+	my (%gitlist, %abslist, %newlist, %dellist);
 	my $gitroot = $self->{packaging}->{git}->{root};
 	my $absroot = $self->{packaging}->{abs}->{root};
 	my $workroot = $self->{packaging}->{workroot};
@@ -461,28 +462,38 @@ sub update {
 	my $git_count = 0;
 	foreach my $repo (@{$self->{packaging}->{git}->{repos}}) {
 		foreach my $pkg (glob("$gitroot/$repo/*")) {
-			next unless (-d $pkg);
-			$pkg =~ s/^\/.*\///;
+			next unless (-d $pkg);  # skip non-directories
+			$pkg =~ s/^\/.*\///;    # strip leading path
+            
 			$gitlist{$pkg} = 1;
 			my ($db_pkgver, $db_pkgrel, $db_plugrel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, plugrel from abs where package = ?", undef, $pkg);
 			$db_plugrel = $db_plugrel || "0";
 			my $vars = `./pkgsource.sh $gitroot $repo $pkg`;
 			chomp($vars);
 			my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$plugrel,$noautobuild) = split(/\|/, $vars);
-			# no plugrel? no soup!
+            
+			# skip packages without a defined plugrel
 			next unless (defined $plugrel);
+            
 			# update abs table regardless of new version
 			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0)
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = 0, del = 0",
 							undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
+            
 			# create work unit package regardless of new version
 			`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
+            
 			# new package, different plugrel or version, done = 0
 			next unless (! defined $db_pkgver || "$plugrel" ne "$db_plugrel" || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
-			my $is_done = 0;
+            
+            # if new, add to list
+            $newlist{$pkg} = 1 if (! defined $db_pkgver);
+            
 			# noautobuild set, assume built, done = 1
+            my $is_done = 0;
 			$is_done = 1 if ($noautobuild);
 			print "$repo/$pkg to $pkgver-$pkgrel-plug$plugrel, done = $is_done\n";
+            
 			# update architecture tables
 			my ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
 			$self->{dbh}->do("insert into armv5 (id, done, fail) values (?, ?, 0)
@@ -502,10 +513,10 @@ sub update {
 	`ABSROOT=$absroot $archbin/abs`;
 	foreach my $repo (@{$self->{packaging}->{abs}->{repos}}) {
 		foreach my $pkg (glob("$absroot/$repo/*")) {
-			next unless (-d $pkg);
-			$pkg =~ s/^\/.*\///;
-			#next if ($skiplist{$pkg});
-			next if ($pkg =~ /.*\-lts$/);
+			next unless (-d $pkg);          # skip non-directories
+			$pkg =~ s/^\/.*\///;            # strip leading path
+			next if ($pkg =~ /.*\-lts$/);   # skip Arch LTS packages
+            
 			$abslist{$pkg} = 1;
 			my ($db_pkgver, $db_pkgrel, $db_skip) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, skip from abs where package = ?", undef, $pkg);
 			my $vars = `./pkgsource.sh $absroot $repo $pkg`;
@@ -517,21 +528,29 @@ sub update {
 				}
 				next;
 			}
+            
 			# skip a bad source
 			next if (! defined $pkgver);
+            
 			# create work unit here for non-skipped and new packages, to repackage abs changes without ver-rel bump
 			if ((defined $db_skip && $db_skip == 0) || (! defined $db_skip)) {
 				`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
 			}
+            
+            # if new, add to list
+            $newlist{$pkg} = 1 if (! defined $db_pkgver);
+            
 			# update abs table
 			my $is_skip = 0;
 			$is_skip = 1 if ($db_skip);
 			$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, del) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0)
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0",
 				undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip);
+            
 			# new package, different version, update, done = 0
 			next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
 			print "$repo/$pkg to $pkgver-$pkgrel\n";
+            
 			# update architecture tables
 			my ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
 			$self->{dbh}->do("insert into armv5 (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
@@ -540,22 +559,52 @@ sub update {
 		}
 	}
     
-	# prune git/abs in db
-    my $del_count = 0;
+	# build package deletion list
 	my $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from abs where del = 0");
 	foreach my $row (@$rows) {
 		my ($pkg, $git, $abs) = @$row;
 		next if ($git && $gitlist{$pkg});
 		next if ($abs && $abslist{$pkg});
 		print "del flag on $pkg\n";
-		$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
-        $del_count++;
+        $dellist{$pkg} = 1;
 	}
-	
+    
+    $q_irc->enqueue(['db', 'print', "Updated $git_count from git, $abs_count from abs. " . scalar(keys %newlist)  . " new, " . scalar(keys %dellist) . " removed."]);
+    
+    # switch on deletion limit
+    if (scalar(keys %dellist) > 10)
+        $self->{dellist} = \%dellist;
+        $self->{newlist} = \%newlist;
+        $q_irc->enqueue(['db', 'print', "Warning: " . scalar(keys %dellist) . " packages to be deleted : !review and/or !continue"]);
+    } else {
+        $self->update_continue(\%dellist);
+    }
+}
+
+sub update_continue {
+    my ($self, $list) = @_;
+    my %dellist = undef;
+    
+    # use the list provided or pull from self after warning
+    if (defined $list) {
+        %dellist = %{$list};
+    } elsif (defined $self->{dellist}) {
+        %dellist = %{$self->{dellist}};
+        undef $self->{dellist};
+        undef $self->{newlist};
+    }
+    
+    # prune abs table of deleted packages
+    if (defined %dellist) {
+        foreach my $pkg (keys %dellist) {
+            $self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+        }
+    }
+    
 	# build package_name_provides
-	$q_irc->enqueue(['db', 'print', "Updated $git_count from git, $abs_count from abs. Rebuilding depends.."]);
+	$q_irc->enqueue(['db', 'print', "Building package names.."]);
 	print "building package_name_provides..\n";
-	$rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from abs where del = 0 and skip = 0");
+	my $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from abs where del = 0 and skip = 0");
 	$self->{dbh}->do("delete from package_name_provides");
 	foreach my $row (@$rows) {
 		my ($id, $pkgname, $provides) = @$row;
@@ -571,14 +620,9 @@ sub update {
 		}
 	}
 	
-	$self->rebuild_all;
-}
-
-sub rebuild_all {
-	my $self = shift;
-	# build package_depends using depends AND makedepends
-	$q_irc->enqueue(['db', 'print', "Rebuilding package_depends with depends and makedepends.."]);
-	my $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs where del = 0 and skip = 0");
+	# build package_depends
+	$q_irc->enqueue(['db', 'print', "Building package dependencies.."]);
+	$rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs where del = 0 and skip = 0");
 	$self->{dbh}->do("delete from package_depends");
 	foreach my $row (@$rows) {
 		my ($id, $depends, $makedepends) = @$row;
@@ -593,29 +637,27 @@ sub rebuild_all {
 		$statement =~ s/, $/\)/;
 		$self->{dbh}->do("$statement");
 	}
-	$q_irc->enqueue(['db', 'print', "Rebuild done."]);
+	$q_irc->enqueue(['db', 'print', "Update complete."]);
 }
 
-sub rebuild_some {
-	my $self = shift;
-	# build package_depends using just depends
-	$q_irc->enqueue(['db', 'print', "Rebuilding package_depends with only depends.."]);
-	my $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs");
-	$self->{dbh}->do("delete from package_depends");
-	foreach my $row (@$rows) {
-		my ($id, $depends, $makedepends) = @$row;
-		next if (!$depends);
-		$depends = "" unless $depends;
-		$makedepends = "" unless $makedepends;
-		my $statement = "insert into package_depends (dependency, package) select distinct package, $id from package_name_provides where name in (";
-		foreach my $name (split(/ /, $depends)) {
-			$name =~ s/(<|=|>).*//;
-			$statement .= "'$name', ";
-		}
-		$statement =~ s/, $/\)/;
-		$self->{dbh}->do("$statement");
-	}
-	$q_irc->enqueue(['db', 'print', "Rebuild done."]);
+sub review {
+    my $self = shift;
+    my %newlist = %{$self->{newlist}};
+    my %dellist = %{$self->{dellist}};
+    my $new = '', $del = '';
+    
+    if (defined %newlist) {
+        foreach my $pkg (keys %newlist) {
+            $new .= " $pkg";
+        }
+    }
+    if (defined %dellist) {
+        foreach my $pkg (keys %dellist) {
+            $del .= " $pkg";
+        }
+    }
+    $q_irc->enqueue(['db', 'print', scalar(keys %newlist) . " new:$new"]);
+    $q_irc->enqueue(['db', 'print', scalar(keys %dellist) . " deleted:$del"]);
 }
 
 1;

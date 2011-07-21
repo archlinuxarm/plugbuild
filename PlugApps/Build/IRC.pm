@@ -127,9 +127,6 @@ sub cb_publicmsg {
 			case "!ready" {
 				$q_db->enqueue(['irc','ready',$arg]);
 			}
-			case "!unfuck" {
-				$q_db->enqueue(['irc','unfuck']);
-			}
 			case "!update" {
 				$q_db->enqueue(['irc','update']);
 			}
@@ -154,13 +151,12 @@ sub cb_publicmsg {
 					$self->irc_priv_print("usage: !unfail <5|7> <package|all>");
 				}
 			}
-			case "!rebuild" {
-				if ($arg) {
-					$q_db->enqueue(['irc','rebuild',$arg]);
-				} else {
-					$self->irc_priv_print("usage: !rebuild <all|some>");
-				}
+			case "!review" {
+                $q_db->enqueue(['irc','review']);
 			}
+            case "!contine" {
+                $q_db->enqueue(['irc', 'continue']);
+            }
 			case "!status" {
 				my ($arch, $pkg) = split(/ /, $arg, 2);
 				if ($pkg && ($arch eq "5" || $arch eq "7")) {
