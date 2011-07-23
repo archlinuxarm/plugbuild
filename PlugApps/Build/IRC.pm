@@ -79,10 +79,10 @@ sub irc_priv_print {
         my $i = index($msg, ' ', 400);
         if ($i == -1 || $i == length($msg) || $i > 450) {
             # no nearby space, just chop it
-            my $todo = "... " . substr($msg, 400);
+            $todo = "... " . substr($msg, 400);
             $i = 400;
         } else {
-            my $todo = "... " . substr($msg, $i + 1);
+            $todo = "... " . substr($msg, $i + 1);
         }
         # enqueue at beginning so followup prints don't smash us
         $q_irc->insert(0, ['irc', 'print', $todo]);
