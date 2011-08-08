@@ -25,7 +25,6 @@ sub new {
 
 sub Run {
     my $self = shift;
-    my $orders = 0;
     print "IrcRun\n";
     
     # set up irc client
@@ -51,7 +50,7 @@ sub Run {
     
     # termination following a broadcast
     print "IrcRunEnd\n";
-    return $orders;
+    return 0;
 }
 
 # connect to irc
