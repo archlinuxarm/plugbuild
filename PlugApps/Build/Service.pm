@@ -37,8 +37,9 @@ sub Run {
     
     if ($available->down_nb()) {
         my $guard = tcp_server undef, $self->{port}, sub { $self->cb_accept(); };
-        $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
+        my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
         $self->{condvar}->wait;
+        undef $timer;
         $guard->destroy;
         $available->up();
     }
@@ -172,31 +173,25 @@ sub cb_queue {
         print "SVC[$from $order]\n";
         switch($order){
             case "next" {
-                my ($who,$response,$what) = @{$msg}[2,3,4];
+                my ($handle,$who,$response) = @{$msg}[2,3,4];
                 print "   -> builder $who: $response\n";
-                #my $cs = $wait_next{$who};
-                #last if (! defined $cs); # bail out if client disconnected early
-                #print $cs "$response\n";
+                $handle->push_write("$response\n");
                 if ($response ne "FAIL") {
                     $q_irc->enqueue(['svc','print',"[new] builder: $who - package: $response"]);
                 } else {
                     $q_irc->enqueue(['svc','print',"[new] found no package to issue $who"]);
                 }
-                #delete $wait_next{$who};
             }
             case "add" {
-                my ($pkg,$response,$what) = @{$msg}[2,3,4];
-                #my $cs = $wait_add{$pkg};
-                #if ($response eq "FAIL") {
-                #    print $cs "FAIL\n";
-                #} else {
-                #    print $cs "OK\n";
-                #}
-                #delete $wait_add{$pkg};
+                my ($handle,$pkg,$response) = @{$msg}[2,3,4];
+                if ($response eq "FAIL") {
+                    $handle->push_write("FAIL\n");
+                } else {
+                    $handle->push_write("OK\n");
+                }
             }
         }
         if ($order eq 'quit' || $order eq 'recycle'){
-            undef $self->{timer};
             $self->{condvar}->broadcast;
             return;
         }

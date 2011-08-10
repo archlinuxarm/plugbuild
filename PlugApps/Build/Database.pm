@@ -112,9 +112,9 @@ sub Run{
             
             # service orders
             case "add" {
-                my $pkg = @{$orders}[2];
+                my ($handle, $pkg) = @{$orders}[2,3];
             	if ($self->pkg_add($pkg)) {
-            		$q_svc->enqueue(['db','add',$pkg,'FAIL']);
+            		$q_svc->enqueue(['db','add',$handle,$pkg,'FAIL']);
             	} else {
             		$q_svc->enqueue(['db','add',$pkg,'OK']);
             	}
@@ -126,15 +126,16 @@ sub Run{
             	$self->pkg_fail(@{$orders}[2]);
             }
             case "next" {
-                my ($arch, $builder) = split(/\|/, @{$orders}[2]);
+                my $handle = @{$orders}[2];
+                my ($arch, $builder) = split(/\|/, @{$orders}[3]);
                 my $next = $self->get_next_package($builder, $arch);
-                if( $next ){
+                if ($next) {
                     my $pkg = join('-',@{$next}[0,1]).'!'.join(' ',@{$next}[2,3]);
                     printf("DbRespond:next:%s\n",$pkg);
                     $self->pkg_work(@{$next}[1], $builder, $arch);
-                    $q_svc->enqueue(['db','next',@{$orders}[2],$pkg]);
-                }else{
-                    $q_svc->enqueue(['db','next',@{$orders}[2],'FAIL']);
+                    $q_svc->enqueue(['db','next',$handle,@{$orders}[2],$pkg]);
+                } else {
+                    $q_svc->enqueue(['db','next',$handle,@{$orders}[2],'FAIL']);
                 }
             }
         }
