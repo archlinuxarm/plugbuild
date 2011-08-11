@@ -86,7 +86,7 @@ sub cb_verify_cb {
 	# depth is zero when we're verifying peer certificate
     return $preverify_ok if $depth;
     
-    # get information i'll use somewhere later..
+    # get certificate information
     my $orgunit = Net::SSLeay::X509_NAME_get_text_by_NID(Net::SSLeay::X509_get_subject_name($cert), Net::SSLeay->NID_organizationalUnitName);
     my $common = Net::SSLeay::X509_NAME_get_text_by_NID(Net::SSLeay::X509_get_subject_name($cert), Net::SSLeay->NID_commonName);
     my @cert_alt = Net::SSLeay::X509_get_subjectAltNames($cert);
@@ -97,7 +97,7 @@ sub cb_verify_cb {
         if ($type == Net::SSLeay::GEN_IPADD()) {
             if ($ip eq $name) {
                 $q_irc->enqueue(['svc', 'print', "[SVC] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
-                $ref->{rtimeout} = 0; # stop the auto-destruct
+                $ref->{rtimeout} = 0;                   # stop the auto-destruct
                 my %client = ( handle   => $ref,        # connection handle - must be preserved
                                ip       => $ip,         # dotted quad ip address
                                ou       => $orgunit,    # OU from cert - currently one of: armv5, armv7, mirror
@@ -161,15 +161,15 @@ sub cb_read {
                 # insert package into repository
                 #  - syntax: add!<repo>|<package>|<filename.tar.xz>|<md5sum>
                 case "add" {
-                    print "   -> adding package: $data\n";
+                    print "   -> adding package: $client->{ou}/$client->{cn} $data\n";
                     $q_db->enqueue(['svc','add',$handle,$client->{ou},$data]);
                 }
                 
                 # build for top-level package is complete
                 #  - syntax: done!<package>
                 case "done" {
-                    print "   -> package done: $data\n";
-                    $q_irc->enqueue(['svc','print',"[done] $client->{ou}/$client->{cn} $data"]);#irc_priv_print "[done] $data";
+                    print "   -> package done: $client->{ou}/$client->{cn} $data\n";
+                    $q_irc->enqueue(['svc','print',"[done] $client->{ou}/$client->{cn} $data"]);
                     $q_db->enqueue(['svc','done',$client->{ou},$data]);
                     $handle->push_write("OK\n");
                 }
@@ -178,7 +178,7 @@ sub cb_read {
                 #  - syntax: fail!<package>
                 case "fail" {
                     $q_db->enqueue(['svc','fail',$client->{ou},$data]);
-                    print "   ->package fail: $data\n";
+                    print "   ->package fail: $client->{ou}/$client->{cn} $data\n";
                     $handle->push_write("OK\n");
                     $q_irc->enqueue(['svc','print',"[fail] $client->{ou}/$client->{cn} $data"]);
                 }
