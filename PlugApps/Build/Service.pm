@@ -70,6 +70,7 @@ sub cb_accept {
                             keepalive   => 1,
                             no_delay    => 1,
                             rtimeout    => 3, # 3 seconds to authenticate with SSL before destruction
+                            rbuf_max    => 0, # disable reading until SSL auth (DDoS prevention)
                             on_rtimeout => sub { $h->destroy; },
                             on_error    => sub { $self->cb_error(@_); },
                             on_starttls => sub { $self->cb_starttls(@_); }
@@ -97,7 +98,6 @@ sub cb_verify_cb {
         if ($type == Net::SSLeay::GEN_IPADD()) {
             if ($ip eq $name) {
                 $q_irc->enqueue(['svc', 'print', "[SVC] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
-                $ref->{rtimeout} = 0;                   # stop the auto-destruct
                 my %client = ( handle   => $ref,        # connection handle - must be preserved
                                ip       => $ip,         # dotted quad ip address
                                ou       => $orgunit,    # OU from cert - currently one of: armv5, armv7, mirror
@@ -114,7 +114,7 @@ sub cb_verify_cb {
 
 # callback on socket error
 sub cb_error {
-	my ($self, $handle, $fatal, $message) = @_;
+    my ($self, $handle, $fatal, $message) = @_;
     
     if ($fatal) {
         print "fatal ";
@@ -123,28 +123,29 @@ sub cb_error {
         }
         delete $self->{clients}->{$handle};
     }
-	print "error from $handle->{peername} - $message\n";
+    print "error from $handle->{peername} - $message\n";
 }
 
 # callback on whether ssl auth succeeded
 sub cb_starttls {
-	my ($self, $handle, $success, $error) = @_;
+    my ($self, $handle, $success, $error) = @_;
     
-	if ($success) {
-        # set read callback now that ssl is good
-        $handle->on_read(sub { $self->cb_read(); });
+    if ($success) {
+        $handle->rtimeout(0);                           # stop auto-destruct
+        undef $handle->rbuf_max;                        # enable read buffer
+        $handle->on_read(sub { $self->cb_read(); });    # set read callback
         return;
     }
     
     # kill the connection, bad ssl auth
-	$handle->destroy;
+    $handle->destroy;
 }
 
 # callback for reading data
-sub cb_read {
-	my ($self, $handle) = @_;
+    sub cb_read {
+    my ($self, $handle) = @_;
     
-	my $buf = $handle->rbuf;
+    my $buf = $handle->rbuf;
     chomp($buf);
     my ($command, $data) = split(/!/, $buf);
     return if (!defined $data);
