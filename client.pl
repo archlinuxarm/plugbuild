@@ -1,18 +1,52 @@
 #!/usr/bin/perl
 use strict;
-use IO::Socket;
 use FindBin qw($Bin);
+use AnyEvent;
+use AnyEvent::TLS;
+use AnyEvent::Handle;
+use AnyEvent::Socket;
 
-# builder name
-my $builder = "lingling";
+####### BEGIN USER CONFIGURATION #######
 
-# architecture (armv5/armv7)
-my $arch = "armv7";
+# plugbuild server
+my $server  = "archlinuxarm.org";
+my $port    = 2123;
 
 # chroot location
 my $chroot = "/root/chroot";
 
+# SSL certificate info (use $Bin for script execution dir)
+my $ca_file     = "$Bin/certs/plugbuild-cacert.pem";    # our CA certificate
+my $cert_file   = "$Bin/certs/client.pem";              # combined key and cert pem
+my $password    = "sekrit";                             # key password (maybe make this interactive)
+
 ######## END USER CONFIGURATION ########
+
+my $condvar = AnyEvent->condvar;
+my $h;
+
+tcp_connect $server, $port, sub {
+    my ($fh, $address) = @_;
+    die $! unless $fh;
+    
+    $h = new AnyEvent::Handle
+                            fh          => $fh,
+                            tls         => "connect",
+                            peername    => $address,
+                            tls_ctx     => {
+                                            verify          => 1,
+                                            ca_file         => $ca_file,
+                                            cert_file       => $cert_file,
+                                            cert_password   => $password,
+                                            verify_cb       => sub { cb_verify_cb(@_); }
+                                            },
+                            keepalive   => 1,
+                            no_delay    => 1,
+                            rtimeout    => 3, # 3 seconds to authenticate with SSL before destruction
+                            on_rtimeout => sub { $h->destroy; },
+                            on_error    => sub { cb_error(@_); },
+                            on_starttls => sub { cb_starttls(@_); }
+                            ;
 
 # other variables, probably shouldn't touch these
 my $makepkg = "makechrootpkg -cr $chroot -- -AcsfrL";
