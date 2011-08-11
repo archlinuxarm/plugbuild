@@ -419,6 +419,11 @@ sub update {
     my $workroot = $self->{packaging}->{workroot};
     my $archbin = $self->{packaging}->{archbin};
     
+    my %priority = ( 'core'         => 10,   # default importance (package selection priority)
+                     'extra'        => 20,
+                     'community'    => 30,
+                     'aur'          => 40 );
+    
     $q_irc->enqueue(['db', 'print', 'Updating git..']);
     print "update git..\n";
     system("pushd $gitroot; git pull; popd");
@@ -432,7 +437,7 @@ sub update {
             $pkg =~ s/^\/.*\///;    # strip leading path
             
             $gitlist{$pkg} = 1;
-            my ($db_pkgver, $db_pkgrel, $db_plugrel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, plugrel from abs where package = ?", undef, $pkg);
+            my ($db_repo, $db_pkgver, $db_pkgrel, $db_plugrel, $db_importance) = $self->{dbh}->selectrow_array("select repo, pkgver, pkgrel, plugrel, importance from abs where package = ?", undef, $pkg);
             $db_plugrel = $db_plugrel || "0";
             my $vars = `./pkgsource.sh $gitroot $repo $pkg`;
             chomp($vars);
@@ -441,10 +446,13 @@ sub update {
             # skip packages without a defined plugrel
             next unless (defined $plugrel);
             
-			# update abs table regardless of new version
-            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0)
-                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = 0, del = 0",
-                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends);
+            # set importance unless already defined in database and package hasn't switched repos
+            my $importance = $priority{$repo} unless (defined $db_importance && $db_repo eq $repo);
+            
+            # update abs table regardless of new version
+            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?)
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = 0, del = 0, importance = ?",
+                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $importance);
             
             # create work unit package regardless of new version
             `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
@@ -484,7 +492,7 @@ sub update {
             next if ($pkg =~ /.*\-lts$/);   # skip Arch LTS packages
             
             $abslist{$pkg} = 1;
-            my ($db_pkgver, $db_pkgrel, $db_skip) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, skip from abs where package = ?", undef, $pkg);
+            my ($db_repo, $db_pkgver, $db_pkgrel, $db_skip, $db_importance) = $self->{dbh}->selectrow_array("select repo, pkgver, pkgrel, skip, importance from abs where package = ?", undef, $pkg);
             my $vars = `./pkgsource.sh $absroot $repo $pkg`;
             chomp($vars);
             my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends) = split(/\|/, $vars);
@@ -506,12 +514,15 @@ sub update {
             # if new, add to list
             $newlist{$pkg} = 1 if (! defined $db_pkgver);
             
+            # set importance unless already defined in database and package hasn't switched repos
+            my $importance = $priority{$repo} unless (defined $db_importance && $db_repo eq $repo);
+            
             # update abs table
             my $is_skip = 0;
             $is_skip = 1 if ($db_skip);
-            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, del) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0)
-                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0",
-                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip);
+            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0, ?)
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0, importance = ?",
+                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $importance);
             
             # new package, different version, update, done = 0
             next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
