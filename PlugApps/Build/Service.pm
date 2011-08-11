@@ -142,7 +142,7 @@ sub cb_starttls {
 }
 
 # callback for reading data
-    sub cb_read {
+sub cb_read {
     my ($self, $handle) = @_;
     
     my $buf = $handle->rbuf;
