@@ -112,18 +112,20 @@ sub Run{
             
             # service orders
             case "add" {
-                my ($handle, $pkg) = @{$orders}[2,3];
-            	if ($self->pkg_add($pkg)) {
-            		$q_svc->enqueue(['db','add',$handle,$pkg,'FAIL']);
+                my ($handle, $arch, $data) = @{$orders}[2,3,4];
+            	if ($self->pkg_add($arch, $data)) {
+            		$q_svc->enqueue(['db','okfail',$handle,'FAIL']);
             	} else {
-            		$q_svc->enqueue(['db','add',$pkg,'OK']);
+            		$q_svc->enqueue(['db','okfail',$handle,'OK']);
             	}
             }
             case "done" {
-            	$self->pkg_done(@{$orders}[2]);
+                my ($arch, $package) = @{$orders}[2,3];
+            	$self->pkg_done($arch, $package);
             }
             case "fail" {
-            	$self->pkg_fail(@{$orders}[2]);
+            	my ($arch, $package) = @{$orders}[2,3];
+                $self->pkg_fail($arch, $package);
             }
             case "next" {
                 my $handle = @{$orders}[2];
@@ -329,8 +331,8 @@ sub status{
 }
 
 sub pkg_add {
-    my ($self, $data) = @_;
-    my ($arch, $repo, $package, $filename, $md5sum_sent) = split(/\|/, $data);
+    my ($self, $arch, $data) = @_;
+    my ($repo, $package, $filename, $md5sum_sent) = split(/\|/, $data);
     print " -> adding $package\n";
 
     # verify md5sum
@@ -371,15 +373,13 @@ sub pkg_work {
 
 # set package done
 sub pkg_done {
-    my ($self, $data) = @_;
-    my ($arch, $package) = split(/\|/, $data);
+    my ($self, $arch, $package) = @_;
     $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 1, a.fail = 0, a.finish = unix_timestamp() where abs.package = ?", undef, $package);
 }
 
 # set package fail
 sub pkg_fail {
-    my ($self, $data) = @_;
-    my ($arch, $package) = split(/\|/, $data);
+    my ($self, $arch, $package) = @_;
     $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 0, a.fail = 1, a.finish = unix_timestamp() where abs.package = ?", undef, $package);
 }
 

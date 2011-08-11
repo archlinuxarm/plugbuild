@@ -96,14 +96,19 @@ sub cb_verify_cb {
     while (my ($type, $name) = splice @cert_alt, 0, 2) {
         if ($type == Net::SSLeay::GEN_IPADD()) {
             if ($ip eq $name) {
-                $q_irc->enqueue(['svc', 'print', "[SSL] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
+                $q_irc->enqueue(['svc', 'print', "[SVC] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
                 $ref->{rtimeout} = 0; # stop the auto-destruct
+                my %client = ( handle   => $ref,        # connection handle - must be preserved
+                               ip       => $ip,         # dotted quad ip address
+                               ou       => $orgunit,    # OU from cert - currently one of: armv5, armv7, mirror
+                               cn       => $common );   # CN from cert - unique client name (previously builder name)
+                $self->{clients}->{$ref} = \%client;    # replace into instance's clients hash
                 return 1;
             }
         }
     }
     
-    $q_irc->enqueue(['svc', 'print', "[SSL] failed verification for $ip:". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
+    $q_irc->enqueue(['svc', 'print', "[SVC] failed verification for $ip:". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
     return 0;
 }
 
@@ -113,7 +118,10 @@ sub cb_error {
     
     if ($fatal) {
         print "fatal ";
-        undef $self->{clients}->{$handle};
+        if (defined $self->{clients}->{$handle}->{cn}) {
+            $q_irc->enqueue(['svc', 'print', "[SVC] $self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn} disconnected: $message"]);
+        }
+        delete $self->{clients}->{$handle};
     }
 	print "error from $handle->{peername} - $message\n";
 }
@@ -140,28 +148,60 @@ sub cb_read {
     chomp($buf);
     my ($command, $data) = split(/!/, $buf);
     return if (!defined $data);
-    switch ($command) {	# <command>!<data>
-        case "new" {    # new!<builder>
-            $q_db->enqueue(['svc','next',$handle,$data]);
+    
+    my $client = $self->{clients}->{$handle};
+    
+    # switch on OU (client type)
+    switch ($client->{ou}) {
+        
+        # builder client - OU = architecture
+        case ["armv5","armv7"] {
+            switch ($command) {
+                
+                # insert package into repository
+                #  - syntax: add!<repo>|<package>|<filename.tar.xz>|<md5sum>
+                case "add" {
+                    print "   -> adding package: $data\n";
+                    $q_db->enqueue(['svc','add',$handle,$client->{ou},$data]);
+                }
+                
+                # build for top-level package is complete
+                #  - syntax: done!<package>
+                case "done" {
+                    print "   -> package done: $data\n";
+                    $q_irc->enqueue(['svc','print',"[done] $client->{ou}/$client->{cn} $data"]);#irc_priv_print "[done] $data";
+                    $q_db->enqueue(['svc','done',$client->{ou},$data]);
+                    $handle->push_write("OK\n");
+                }
+                
+                # build failed for package
+                #  - syntax: fail!<package>
+                case "fail" {
+                    $q_db->enqueue(['svc','fail',$client->{ou},$data]);
+                    print "   ->package fail: $data\n";
+                    $handle->push_write("OK\n");
+                    $q_irc->enqueue(['svc','print',"[fail] $client->{ou}/$client->{cn} $data"]);
+                }
+                
+                # request for new package
+                #  - syntax: new!-
+                case "new" {
+                    $q_db->enqueue(['svc','next',$handle,$data]);
+                }
+                
+                # prepare database/repo for incoming new package
+                #  - syntax: prep!<package>
+                case "prep" {
+                    $q_db->enqueue(['svc','prep',$handle,$data]);
+                }
+            }
         }
-        case "add" {    # add!<repo>|<package>|<filename.tar.xz>|<md5sum>
-            print "   -> adding package: $data\n";
-            $q_db->enqueue(['svc','add',$handle,$data]);
-        }
-        case "done" {   # done!<package>
-            print "   -> package done: $data\n";
-            $q_irc->enqueue(['svc','print',"[done] $data"]);#irc_priv_print "[done] $data";
-            $q_db->enqueue(['svc','done',$data]);
-            $handle->push_write("OK\n");
-        }
-        case "fail" {   # fail!<package>
-            $q_db->enqueue(['svc','fail',$data]);
-            print "   ->package fail: $data\n";
-            $handle->push_write("OK\n");
-            $q_irc->enqueue(['svc','print',"[fail] $data"]);
+        
+        # mirror client
+        case "mirror" {
+            print "TODO\n";
         }
     }
-
 }
 
 # callback for the queue timer
@@ -182,13 +222,9 @@ sub cb_queue {
                     $q_irc->enqueue(['svc','print',"[new] found no package to issue $who"]);
                 }
             }
-            case "add" {
-                my ($handle,$pkg,$response) = @{$msg}[2,3,4];
-                if ($response eq "FAIL") {
-                    $handle->push_write("FAIL\n");
-                } else {
-                    $handle->push_write("OK\n");
-                }
+            case "okfail" {
+                my ($handle,$response) = @{$msg}[2,3];
+                $handle->push_write("$response\n");
             }
         }
         if ($order eq 'quit' || $order eq 'recycle'){
