@@ -188,8 +188,8 @@ sub cb_read {
                 }
                 
                 # request for new package
-                case "new" {
-                    $q_db->enqueue(['svc','next',$handle]);
+                case "next" {
+                    $q_db->enqueue(['svc', 'next', $handle, $client->{ou}, $client->{cn}]);
                 }
                 
                 # prepare database/repo for incoming new package
@@ -217,18 +217,20 @@ sub cb_queue {
         print "SVC[$from $order]\n";
         switch($order){
             case "next" {
-                my ($handle,$who,$response) = @{$msg}[2,3,4];
-                print "   -> builder $who: $response\n";
-                $handle->push_write("$response\n");
-                if ($response ne "FAIL") {
-                    $q_irc->enqueue(['svc','print',"[new] builder: $who - package: $response"]);
+                my ($handle, $data) = @{$msg}[2,3];
+                my $client = $self->{clients}->{$handle};
+                
+                print "   -> next for $client->{ou}/$client->{cn}: $data->{pkgbase}\n";
+                $handle->push_write(json => $data);
+                if ($data->{pkgbase} ne "FAIL") {
+                    $q_irc->enqueue(['svc','print',"[new] builder: $client->{ou}/$client->{cn} - package: $data->{pkgbase}"]);
                 } else {
-                    $q_irc->enqueue(['svc','print',"[new] found no package to issue $who"]);
+                    $q_irc->enqueue(['svc','print',"[new] found no package to issue $client->{ou}/$client->{cn}"]);
                 }
             }
-            case "okfail" {
-                my ($handle,$response) = @{$msg}[2,3];
-                $handle->push_write("$response\n");
+            case "ack" {
+                my ($handle, $data) = @{$msg}[2,3];
+                $handle->push_write(json => $data);
             }
         }
         if ($order eq 'quit' || $order eq 'recycle'){

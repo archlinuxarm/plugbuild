@@ -114,9 +114,11 @@ sub Run{
             case "add" {
                 my ($handle, $arch, $data) = @{$orders}[2,3,4];
             	if ($self->pkg_add($arch, $data)) {
-            		$q_svc->enqueue(['db','okfail',$handle,'FAIL']);
+                    $data->{response} = "FAIL";
+            		$q_svc->enqueue(['db', 'ack', $handle, $data]);
             	} else {
-            		$q_svc->enqueue(['db','okfail',$handle,'OK']);
+                    $data->{response} = "OK";
+            		$q_svc->enqueue(['db', 'ack', $handle, $data]);
             	}
             }
             case "done" {
@@ -128,16 +130,15 @@ sub Run{
                 $self->pkg_fail($arch, $package);
             }
             case "next" {
-                my $handle = @{$orders}[2];
-                my ($arch, $builder) = split(/\|/, @{$orders}[3]);
+                my ($handle, $arch, $builder) = @{$orders}[2,3,4];
                 my $next = $self->get_next_package($builder, $arch);
                 if ($next) {
                     my $pkg = join('-',@{$next}[0,1]).'!'.join(' ',@{$next}[2,3]);
                     printf("DbRespond:next:%s\n",$pkg);
                     $self->pkg_work(@{$next}[1], $builder, $arch);
-                    $q_svc->enqueue(['db','next',$handle,@{$orders}[2],$pkg]);
+                    $q_svc->enqueue(['db', 'next', $handle, { command => 'next', repo => $next->[0], pkgbase => $next->[1] }]);
                 } else {
-                    $q_svc->enqueue(['db','next',$handle,@{$orders}[2],'FAIL']);
+                    $q_svc->enqueue(['db', 'next', $handle, { command => 'next', pkgbase => "FAIL" }]);
                 }
             }
         }
