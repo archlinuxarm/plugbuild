@@ -5,6 +5,7 @@
 
 use strict;
 use FindBin qw($Bin);
+use Switch;
 use AnyEvent;
 use AnyEvent::TLS;
 use AnyEvent::Handle;
@@ -26,6 +27,17 @@ my $password    = "sekrit";                             # key password (maybe ma
 
 ######## END USER CONFIGURATION ########
 
+# other variables, probably shouldn't touch these
+my $makepkg     = "makechrootpkg -cr $chroot -- -AcsfrL";
+my $workroot    = "$Bin/work";
+my $pkgdest     = "$Bin/pkgdest";
+my $workurl     = "http://archlinuxarm.org/builder/work";
+
+my $state;
+my $child;
+my %files;
+
+# AnyEvent setup
 my $condvar = AnyEvent->condvar;
 my $h;
 
@@ -47,132 +59,221 @@ tcp_connect $server, $port, sub {
                             keepalive   => 1,
                             no_delay    => 1,
                             rtimeout    => 3, # 3 seconds to authenticate with SSL before destruction
-                            on_rtimeout => sub { $h->destroy; },
+                            on_rtimeout => sub { $h->destroy; $condvar->broadcast; },
                             on_error    => sub { cb_error(@_); },
                             on_starttls => sub { cb_starttls(@_); }
                             ;
 
-# other variables, probably shouldn't touch these
-my $makepkg = "makechrootpkg -cr $chroot -- -AcsfrL";
-my $workroot = "$Bin/work";
-my $pkgdest = "$Bin/pkgdest";
-my $workurl = "http://archlinuxarm.org/builder/work";
+# main event loop
+$condvar->wait;
 
-# talk to server, return its reply
-sub talk {
-    my $command = shift;
-	
-	while (1) {
-		my $sock = new IO::Socket::INET (
-			PeerAddr => 'archlinuxarm.org',
-			PeerPort => '2121',
-			Proto => 'tcp',
-		);
-		if (!$sock) {
-			print "Could not create socket: $!\n";
-			print "Trying again in 10s..\n";
-			sleep 10;
-			next;
-		}
-		print " -> command: $command\n";
-		print $sock "$command\n";
-		my $buf = <$sock>;
-		chomp($buf);
-		print "    -> reply: $buf\n";
-		close($sock);
-		return $buf;
-	}
+# shutdown
+$h->destroy;
+return;
+
+### control subroutines
+
+# callback that handles peer certificate verification
+sub cb_verify_cb {
+    my ($tls, $ref, $cn, $depth, $preverify_ok, $x509_store_ctx, $cert) = @_;
+    
+	# depth is zero when we're verifying peer certificate
+    return $preverify_ok if $depth;
+    
+    # get certificate information
+    my $orgunit = Net::SSLeay::X509_NAME_get_text_by_NID(Net::SSLeay::X509_get_subject_name($cert), Net::SSLeay->NID_organizationalUnitName);
+    my $common = Net::SSLeay::X509_NAME_get_text_by_NID(Net::SSLeay::X509_get_subject_name($cert), Net::SSLeay->NID_commonName);
+    my @cert_alt = Net::SSLeay::X509_get_subjectAltNames($cert);
+    my $ip = AnyEvent::Socket::parse_address $cn;
+    
+    # verify ip address in client cert subject alt name against connecting ip
+    while (my ($type, $name) = splice @cert_alt, 0, 2) {
+        if ($type == Net::SSLeay::GEN_IPADD()) {
+            if ($ip eq $name) {
+                print "verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert));
+                return 1;
+            }
+        }
+    }
+    
+    print "failed verification for $ip:". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert));
+    return 0;
 }
 
-my $done = 1;
-$SIG{INT} = \&catcher;
-sub catcher {
-	$SIG{INT} = \&catcher;
-	print "control si\n"
+# callback on socket error
+sub cb_error {
+    my ($self, $handle, $fatal, $message) = @_;
+    
+    if ($fatal) {
+        print "fatal ";
+        $condvar->broadcast;
+    }
+    print "error from $handle->{peername} - $message\n";
 }
 
-while ($done) {
-	#system("pacman -Syyuf --noconfirm");
-	# 0. sanitize workspace, update chroot
-	chdir($Bin);
+# callback on whether ssl auth succeeded
+sub cb_starttls {
+    my ($self, $handle, $success, $error) = @_;
+    
+    if ($success) {
+        $handle->rtimeout(0);                           # stop auto-destruct
+        $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });    # set read callback
+        
+        $handle->push_write(json => { command => 'next' });
+        return;
+    }
+    
+    # kill the client, bad ssl auth
+    $condvar->broadcast;
+}
+
+# callback for reading data
+sub cb_read {
+    my ($handle, $data) = @_;
+    
+    return if (!defined $data);
+    
+    switch ($data->{command}) {
+        case "add" {
+            cb_add($data);
+        }
+        case ["done", "fail"] {
+            if ($state->{command} eq $data->{command} && $state->{pkgbase} eq $data->{pkgbase}) {
+                print "ACK: $state->{command}\n";
+                $handle->push_write(json => { command => 'next'}); # RM: push build
+            }
+        }
+        case "next" {
+            if ($data->{pkgbase} eq "FAIL") { # RM: push build
+                $condvar->broadcast;
+            } else {
+                $state = $data;
+                build_start($data->{repo}, $data->{pkgbase});
+            }
+        }
+        case "prep" {
+            cb_add();
+        }
+    }
+}
+
+sub build_start {
+    my ($repo, $pkgbase) = @_;
+    
+    my $pid = fork();
+    if (!defined $pid) {
+        print "error: can't fork\n";
+        $condvar->broadcast;
+        return;
+    } elsif ($pid) {
+        $child = AnyEvent->child(pid => $pid, cb => \&build_finish);
+        return;
+    }
+    
+    # set child thread process group
+    setpgrp;
+    
+	# sanitize workspace
+	chdir "$Bin";
 	`rm -rf $workroot; mkdir $workroot`;
 	`rm -rf $pkgdest; mkdir $pkgdest`;
-	system("mkarchroot -u $chroot/root");
 
-	# 1. ask for a package to build
-	my $reply = talk("new!$arch|$builder");
-	if ($reply eq "FAIL") {
-		print "\n\nSomething horrible happened..\n";
-		last;
-	}
-	my ($unit, $deps) = split(/!/, $reply);
-	my ($repo, $package) = split(/-/, $unit, 2);
+	# download/extract workunit
+	chdir "$workroot";
+	system("wget $workurl/$repo-$pkgbase.tgz");
+	system("tar -zxf $workroot/$repo-$pkgbase.tgz");
 	
-	# 2. download/extract workunit
-	chdir($workroot);
-	system("wget $workurl/$unit.tgz");
-	print " -> extracting work unit\n";
-	system("tar -zxf $workroot/$unit.tgz");
-	
-	# 4. build package
-	chdir "$workroot/$package";
+	# build package
+	chdir "$workroot/$pkgbase";
 	`sed -i "/^options=/s/force//" PKGBUILD`;
 	print " -> PKGDEST='$pkgdest' $makepkg\n";
-	if ($package eq "tar") {
-		system("FORCE_UNSAFE_CONFIGURE=1 PKGDEST='$pkgdest' $makepkg");
-	} else {
-		system("PKGDEST='$pkgdest' $makepkg");
-	}
-	if ($? >> 8) {
-		print " !! $package build failed\n";
-		my $reply = talk("fail!$arch|$package");
-		print "    -> reported fail: $reply\n";
-		### upload log
-		my ($logfile) = glob("$chroot/copy/build/*-armv7h-build.log");
-		if ($logfile) {
-			print " -> uploading $logfile\n";
-			my $result = `curl --form uploaded=\@$logfile --form press=Upload http://archlinuxarm.org:81/builder/uplog.php`;
-			if ($result eq "FAIL") {
-				print "    -> failed\n";
-			}
-		}
-		next;
-	}
-	
-	# 5. upload package(s)
-	my $uploaded = 0;
-	while ($uploaded == 0) {
-		foreach my $filename (glob("$pkgdest/*")) {
-			$filename =~ s/^\/.*\///;
-			next if ($filename eq "");
-			my $md5sum_file = `md5sum $pkgdest/$filename`;
-			$md5sum_file = (split(/ /, $md5sum_file))[0];
-			print " -> uploading $filename ($md5sum_file)\n";
-			my $result = `curl --retry 5 --form uploaded=\@$pkgdest/$filename --form press=Upload http://archlinuxarm.org:81/builder/uppkg.php`;
-			chomp($result);
-			if ($result eq "ERROR") {
-				print "    -> failed to upload";
-				$uploaded = 0;
-				last;
-			}
-			
-			my $reply = talk("add!$arch|$repo|$package|$filename|$md5sum_file");
-			if ($reply eq "FAIL") {
-				print "    -> server failure: add!$repo|$package|$filename|$md5sum_file";
-				$uploaded = 0;
-				last;
-			}
-			$uploaded = 1;
-		}
-	}
-
-	# 6. notify server that i'm done
-	if ($uploaded) {
-		print " -> notifying server of completion\n";
-		my $reply = talk("done!$arch|$package");
-		if ($reply eq "FAIL") {
-			holyshitprint "    -> server failure: done!$package";
-			next;
-		}
-	}
+    exec("mkarchroot -u /root/chroot/root; makechrootpkg -cr /root/chroot -- -AcsfrL") or print "couldn't exec: $!";
 }
+
+sub build_finish {
+    my ($pid, $status) = @_;
+    
+    # build failed
+	if ($status) {
+        # upload log
+        my ($logfile) = glob("$chroot/copy/build/*-build.log");
+        if ($logfile) {
+            print " -> uploading $logfile\n";
+            my $result = `curl --form uploaded=\@$logfile --form press=Upload http://archlinuxarm.org:81/builder/uplog.php`;
+            if ($result eq "FAIL") {
+                print "    -> failed\n";
+            }
+        }
+        
+        # communicate fail
+        $state->{command} = 'fail';
+        $h->push_write(json => $state);
+    }
+	
+    # build succeeded
+    else {
+        # enumerate packages for upload
+        foreach my $filename (glob("$pkgdest/*")) {
+            $filename =~ s/^\/.*\///;
+            next if ($filename eq "");
+            my $md5sum_file = `md5sum $pkgdest/$filename`;
+            $md5sum_file = (split(/ /, $md5sum_file))[0];
+            $files{$filename} = $md5sum_file;
+        }
+        
+        # prepare server for upload
+        $state->{command} = 'prep';
+        $h->push_write(json => $state);
+    }
+}
+
+sub cb_add {
+    my $data = shift;
+    
+    # delete successfully uploaded file from our list
+    if (defined $data) {
+        if ($data->{response} eq "OK") {
+            delete $files{$data->{filename}};
+        } elsif ($data->{response} eq "FAIL") {
+            print " -> failed to upload file, continuing cycle\n";
+        }
+    }
+    
+    # upload a file
+    if (my ($filename, $md5sum) = each(%files)) {
+        # query file for extra information
+        # $pkgname = the pkgname for this file
+        # $pkgdesc = description of package
+        
+        # construct message for server
+        my %reply = ( pkgbase   => $state->{pkgbase},
+                      pkgname   => $pkgname,
+                      pkgdesc   => $pkgdesc,
+                      repo      => $state->{repo},
+                      filename  => $filename,
+                      md5sum    => $md5sum );
+        
+        # upload file
+        print " -> uploading $filename ($md5sum)\n";
+        while (1) {
+            my $result = `curl --retry 5 --form uploaded=\@$pkgdest/$filename --form press=Upload http://archlinuxarm.org:81/builder/uppkg.php`;
+            chomp($result);
+            if ($result eq "ERROR") {
+                print "    -> failed to upload";
+            } else {
+                last;
+            }
+        }
+        
+        # communicate reply
+        $h->push_write(json => \%reply);
+    }
+    
+    # finished uploading
+    else {
+        print " -> finished uploading, sending done\n";
+        $state->{command} = 'done';
+        $h->push_write(json => $state);
+    }
+}
+
