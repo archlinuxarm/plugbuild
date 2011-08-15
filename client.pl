@@ -187,7 +187,7 @@ sub build_start {
 	chdir "$workroot/$pkgbase";
 	`sed -i "/^options=/s/force//" PKGBUILD`;
 	print " -> PKGDEST='$pkgdest' $makepkg\n";
-    exec("mkarchroot -u /root/chroot/root; makechrootpkg -cr /root/chroot -- -AcsfrL") or print "couldn't exec: $!";
+    exec("mkarchroot -u $chroot/root; PKGDEST='$pkgdest' $makepkg") or print "couldn't exec: $!";
 }
 
 sub build_finish {
