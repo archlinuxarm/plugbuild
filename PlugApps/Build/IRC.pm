@@ -25,8 +25,10 @@ sub new {
 
 sub Run {
     my $self = shift;
-    print "IrcRun\n";
     
+	return if (! $available->down_nb());
+    print "IrcRun\n";
+	
     # set up irc client
     $self->{condvar} = AnyEvent->condvar;
     my $con = new AnyEvent::IRC::Client;
@@ -56,16 +58,12 @@ sub Run {
 # connect to irc
 sub connect {
     my ($self, $con) = @_;
-    if ($available->down_nb()) {
-        $con->connect($self->{server}, $self->{port}, {
-            nick => $self->{nick},
-            user => $self->{nick},
-            real => $self->{nick},
-            password => "$self->{nick} $self->{pass}",
-            timeout => 20 });
-        return 1;
-    }
-    return undef;
+	$con->connect($self->{server}, $self->{port}, {
+		nick => $self->{nick},
+		user => $self->{nick},
+		real => $self->{nick},
+		password => "$self->{nick} $self->{pass}",
+		timeout => 20 });
 }
 
 # send a line to the build channel
@@ -93,10 +91,10 @@ sub irc_priv_print {
 # callback for socket connection - sleep and reconnect on error
 sub cb_connect {
     my ($self, $con, $error) = @_;
+	
     if (defined $error) {
-        $available->up();
         warn "IRC: connect error: $error\n";
-        sleep 15;
+        sleep $self->{delay};
         $self->connect($con);
     }
 }
@@ -104,11 +102,15 @@ sub cb_connect {
 # callback for socket disconnect - sleep and reconnect
 sub cb_disconnect {
     my ($self, $con, $reason) = @_;
+	
     warn "IRC: disconnected: $reason\n";
     return if ($reason eq "quit");
-    $available->up();
-    return if ($reason eq "recycle");
-    sleep 15;
+	if ($reason eq "recycle") {
+		$available->up();
+		return;
+	}
+	
+    sleep $self->{delay};
     $self->connect($con);
 }
 
