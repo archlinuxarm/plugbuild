@@ -13,6 +13,7 @@ use AnyEvent;
 use AnyEvent::TLS;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
+use JSON::XS;
 
 our $available = Thread::Semaphore->new(1);
 
@@ -133,7 +134,7 @@ sub cb_starttls {
     if ($success) {
         $handle->rtimeout(0);                           # stop auto-destruct
         undef $handle->rbuf_max;                        # enable read buffer
-        $handle->on_read(sub { $self->cb_read(); });    # set read callback
+        $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });    # set read callback
         return;
     }
     
@@ -143,11 +144,8 @@ sub cb_starttls {
 
 # callback for reading data
 sub cb_read {
-    my ($self, $handle) = @_;
+    my ($self, $handle, $data) = @_;
     
-    my $buf = $handle->rbuf;
-    chomp($buf);
-    my ($command, $data) = split(/!/, $buf);
     return if (!defined $data);
     
     my $client = $self->{clients}->{$handle};
@@ -157,43 +155,48 @@ sub cb_read {
         
         # builder client - OU = architecture
         case ["armv5","armv7"] {
-            switch ($command) {
+            switch ($data->{command}) {
                 
                 # insert package into repository
-                #  - syntax: add!<repo>|<package>|<filename.tar.xz>|<md5sum>
+                #  - pkgbase    => top level package name
+                #  - pkgname    => individual package name
+                #  - pkgdesc    => package description
+                #  - repo       => repository (core/extra/community/aur)
+                #  - filename   => uploaded filename.tar.xz
+                #  - md5sum     => md5sum for upload verification
                 case "add" {
-                    print "   -> adding package: $client->{ou}/$client->{cn} $data\n";
-                    $q_db->enqueue(['svc','add',$handle,$client->{ou},$data]);
+                    print "   -> adding package: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
+                    $q_db->enqueue(['svc', 'add', $handle, $client->{ou}, $data]);
                 }
                 
                 # build for top-level package is complete
-                #  - syntax: done!<package>
+                #  - pkgbase    => top level package name
                 case "done" {
-                    print "   -> package done: $client->{ou}/$client->{cn} $data\n";
-                    $q_irc->enqueue(['svc','print',"[done] $client->{ou}/$client->{cn} $data"]);
-                    $q_db->enqueue(['svc','done',$client->{ou},$data]);
-                    $handle->push_write("OK\n");
+                    print "   -> package done: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
+                    $q_irc->enqueue(['svc', 'print', "[done] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
+                    $q_db->enqueue(['svc', 'done', $client->{ou}, $data->{pkgbase}]);
+                    $handle->push_write(json => $data); # ACK via original hash
                 }
                 
                 # build failed for package
-                #  - syntax: fail!<package>
+                #  - pkgbase    => top level package name
                 case "fail" {
-                    $q_db->enqueue(['svc','fail',$client->{ou},$data]);
-                    print "   ->package fail: $client->{ou}/$client->{cn} $data\n";
-                    $handle->push_write("OK\n");
+                    print "   -> package fail: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
                     $q_irc->enqueue(['svc','print',"[fail] $client->{ou}/$client->{cn} $data"]);
+                    $q_db->enqueue(['svc','fail',$client->{ou},$data->{pkgbase}]);
+                    $handle->push_write(json => $data); # ACK via original hash
                 }
                 
                 # request for new package
-                #  - syntax: new!-
                 case "new" {
-                    $q_db->enqueue(['svc','next',$handle,$data]);
+                    $q_db->enqueue(['svc','next',$handle]);
                 }
                 
                 # prepare database/repo for incoming new package
-                #  - syntax: prep!<package>
+                #  - pkgbase    => top level package name
                 case "prep" {
-                    $q_db->enqueue(['svc','prep',$handle,$data]);
+                    print "   -> preparing package: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
+                    $q_db->enqueue(['svc','prep',$handle,$data->{pkgbase}]);
                 }
             }
         }
