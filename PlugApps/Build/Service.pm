@@ -172,7 +172,7 @@ sub cb_read {
                 #  - md5sum     => md5sum for upload verification
                 case "add" {
                     print "   -> adding package: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
-                    $q_db->enqueue(['svc', 'add', $handle, $client->{ou}, $data]);
+                    $q_db->enqueue(['svc', 'add', $client->{ou}, $client->{cn}, $data]);
                 }
                 
                 # build for top-level package is complete
@@ -202,7 +202,7 @@ sub cb_read {
                 #  - pkgbase    => top level package name
                 case "prep" {
                     print "   -> preparing package: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
-                    $q_db->enqueue(['svc', 'prep', $client->{ou}, $client->{cn}, $data->{pkgbase}]);
+                    $q_db->enqueue(['svc', 'prep', $client->{ou}, $client->{cn}, $data]);
                 }
             }
         }
@@ -235,7 +235,9 @@ sub cb_queue {
                 }
             }
             case "ack" {
-                my ($handle, $data) = @{$msg}[2,3];
+                my ($ou, $cn, $data) = @{$msg}[2,3,4];
+                my $handle = $self->{clientsref}->{"$ou/$cn"};
+                
                 $handle->push_write(json => $data);
             }
         }

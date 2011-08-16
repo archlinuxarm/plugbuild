@@ -112,13 +112,13 @@ sub Run{
             
             # service orders
             case "add" {
-                my ($handle, $arch, $data) = @{$orders}[2,3,4];
+                my ($arch, $builder, $data) = @{$orders}[2,3,4];
             	if ($self->pkg_add($arch, $data)) {
                     $data->{response} = "FAIL";
-            		$q_svc->enqueue(['db', 'ack', $handle, $data]);
+            		$q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
             	} else {
                     $data->{response} = "OK";
-            		$q_svc->enqueue(['db', 'ack', $handle, $data]);
+            		$q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
             	}
             }
             case "done" {
@@ -138,6 +138,11 @@ sub Run{
                 } else {
                     $q_svc->enqueue(['db', 'next', $arch, $builder, { command => 'next', pkgbase => "FAIL" }]);
                 }
+            }
+            case "prep" {
+                my ($arch, $builder, $data) = @{$orders}[2,3,4];
+                $self->pkg_prep($arch, $data);
+                $q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
             }
         }
     }
@@ -331,8 +336,11 @@ sub status{
 
 sub pkg_add {
     my ($self, $arch, $data) = @_;
-    my ($repo, $package, $filename, $md5sum_sent) = split(/\|/, $data);
-    print " -> adding $package\n";
+    my $repo = $data->{repo};
+    my $pkgname = $data->{pkgbase};
+    my $filename = $data->{filename};
+    my $md5sum_sent = $data->{md5sum};
+    print " -> adding $pkgname\n";
 
     # verify md5sum
     my $md5sum_file = `md5sum $self->{packaging}->{in_pkg}/$filename`;
@@ -347,7 +355,7 @@ sub pkg_add {
     }
     
     # move file, repo-add it
-    print "   -> adding $arch/$repo/$package ($filename)..\n";
+    print "   -> adding $arch/$repo/$pkgname ($filename)..\n";
     system("mv -f $self->{packaging}->{in_pkg}/$filename $self->{packaging}->{repo}->{armv5}/$repo") if ($arch eq "armv5");
 	system("mv -f $self->{packaging}->{in_pkg}/$filename $self->{packaging}->{repo}->{armv7}/$repo") if ($arch eq "armv7");
     if ($? >> 8) {
@@ -360,8 +368,31 @@ sub pkg_add {
         print "    -> move failed\n";
         return 1;
     }
+    
+    # add package to file table
+    $self->{dbh}->do("insert into files (arch, repo, pkgbase, pkgname, pkgdesc, filename, md5sum) values (?, ?, ?, ?, ?, ?, ?)",
+                     undef, $arch, $repo, $data->{pkgbase}, $pkgname, $data->{pkgdesc}, $filename, $md5sum_sent);
      
     return 0;
+}
+
+# prepare files table, remove old files from repo
+sub pkg_prep {
+    my ($self, $arch, $data) = @_;
+    
+    my $rows = $self->{dbh}->selectall_arrayref("select repo, pkgname, filename from files where arch = ? and pkgbase = ? and del = 0", undef, $arch, $data->{pkgbase});
+    foreach my $row (@$rows) {
+        my ($repo, $pkgname, $filename) = @$row;
+        
+        # remove pkgname from repo.db
+        system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.db.tar.gz $pkgname");
+        
+        # remove file
+        system("rm -f $self->{packaging}->{repo}->{$arch}/$repo/$filename");
+    }
+    
+    # flag del on previous entries
+    $self->{dbh}->do("update files set del = 1 where arch = ? and pkgbase = ?", undef, $arch, $data->{pkgbase});
 }
 
 # assign builder to package
