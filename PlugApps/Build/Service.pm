@@ -37,8 +37,8 @@ sub Run {
     $self->{clients} = \%clients;
     
     if ($available->down_nb()) {
-        my $guard = tcp_server undef, $self->{port}, sub { $self->cb_accept(); };
-        my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
+        my $guard = tcp_server undef, $self->{port}, sub { $self->cb_accept(@_); };
+        my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(@_); });
         $self->{condvar}->wait;
         undef $timer;
         $guard->destroy;
