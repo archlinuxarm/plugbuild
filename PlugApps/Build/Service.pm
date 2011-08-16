@@ -39,11 +39,17 @@ sub Run {
     $self->{clientsref} = \%clientsref;
     
     if ($available->down_nb()) {
+        # start-up
         my $guard = tcp_server undef, $self->{port}, sub { $self->cb_accept(@_); };
         my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(@_); });
         $self->{condvar}->wait;
+        
+        # shutdown
         undef $timer;
-        $guard->destroy;
+        $guard->cancel;
+        while (my ($key, $value) = each %clients) {
+            $value->{handle}->destroy;
+        }
         $available->up();
     }
     
