@@ -30,11 +30,13 @@ sub new {
 sub Run {
     my $self = shift;
     my %clients;
+    my %clientsref;
     
     print "SvcRun\n";
     
     $self->{condvar} = AnyEvent->condvar;
     $self->{clients} = \%clients;
+    $self->{clientsref} = \%clientsref;
     
     if ($available->down_nb()) {
         my $guard = tcp_server undef, $self->{port}, sub { $self->cb_accept(@_); };
@@ -66,7 +68,7 @@ sub cb_accept {
                                             ca_file                     => $self->{cacert},
                                             cert_file                   => $self->{cert},
                                             cert_password               => $self->{pass},
-                                            verify_cb                   => sub { cb_verify_cb(@_); }
+                                            verify_cb                   => sub { $self->cb_verify_cb(@_); }
                                             },
                             keepalive   => 1,
                             no_delay    => 1,
@@ -90,7 +92,9 @@ sub cb_verify_cb {
     
     # get certificate information
     my $orgunit = Net::SSLeay::X509_NAME_get_text_by_NID(Net::SSLeay::X509_get_subject_name($cert), Net::SSLeay->NID_organizationalUnitName);
+    $orgunit =~ s/\W//g;
     my $common = Net::SSLeay::X509_NAME_get_text_by_NID(Net::SSLeay::X509_get_subject_name($cert), Net::SSLeay->NID_commonName);
+    $common =~ s/\W//g;
     my @cert_alt = Net::SSLeay::X509_get_subjectAltNames($cert);
     my $ip = AnyEvent::Socket::parse_address $cn;
     
@@ -99,11 +103,12 @@ sub cb_verify_cb {
         if ($type == Net::SSLeay::GEN_IPADD()) {
             if ($ip eq $name) {
                 $q_irc->enqueue(['svc', 'print', "[SVC] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
-                my %client = ( handle   => $ref,        # connection handle - must be preserved
-                               ip       => $ip,         # dotted quad ip address
-                               ou       => $orgunit,    # OU from cert - currently one of: armv5, armv7, mirror
-                               cn       => $common );   # CN from cert - unique client name (previously builder name)
-                $self->{clients}->{$ref} = \%client;    # replace into instance's clients hash
+                my %client = ( handle   => $ref,                # connection handle - must be preserved
+                               ip       => $ref->{peername},    # dotted quad ip address
+                               ou       => $orgunit,            # OU from cert - currently one of: armv5, armv7, mirror
+                               cn       => $common );           # CN from cert - unique client name (previously builder name)
+                $self->{clients}->{$ref} = \%client;            # replace into instance's clients hash
+                $self->{clientsref}->{"$orgunit/$common"} = $ref;
                 return 1;
             }
         }
@@ -121,6 +126,7 @@ sub cb_error {
         print "fatal ";
         if (defined $self->{clients}->{$handle}->{cn}) {
             $q_irc->enqueue(['svc', 'print', "[SVC] $self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn} disconnected: $message"]);
+            delete $self->{clientsref}->{"$self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn}"};
         }
         delete $self->{clients}->{$handle};
     }
@@ -189,14 +195,14 @@ sub cb_read {
                 
                 # request for new package
                 case "next" {
-                    $q_db->enqueue(['svc', 'next', $handle, $client->{ou}, $client->{cn}]);
+                    $q_db->enqueue(['svc', 'next', $client->{ou}, $client->{cn}]);
                 }
                 
                 # prepare database/repo for incoming new package
                 #  - pkgbase    => top level package name
                 case "prep" {
                     print "   -> preparing package: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
-                    $q_db->enqueue(['svc','prep',$handle,$data->{pkgbase}]);
+                    $q_db->enqueue(['svc', 'prep', $client->{ou}, $client->{cn}, $data->{pkgbase}]);
                 }
             }
         }
@@ -217,15 +223,15 @@ sub cb_queue {
         print "SVC[$from $order]\n";
         switch($order){
             case "next" {
-                my ($handle, $data) = @{$msg}[2,3];
-                my $client = $self->{clients}->{$handle};
+                my ($ou, $cn, $data) = @{$msg}[2,3,4];
+                my $handle = $self->{clientsref}->{"$ou/$cn"};
                 
-                print "   -> next for $client->{ou}/$client->{cn}: $data->{pkgbase}\n";
+                print "   -> next for $ou/$cn: $data->{pkgbase}\n";
                 $handle->push_write(json => $data);
                 if ($data->{pkgbase} ne "FAIL") {
-                    $q_irc->enqueue(['svc','print',"[new] builder: $client->{ou}/$client->{cn} - package: $data->{pkgbase}"]);
+                    $q_irc->enqueue(['svc','print',"[new] builder: $ou/$cn - package: $data->{pkgbase}"]);
                 } else {
-                    $q_irc->enqueue(['svc','print',"[new] found no package to issue $client->{ou}/$client->{cn}"]);
+                    $q_irc->enqueue(['svc','print',"[new] found no package to issue $ou/$cn"]);
                 }
             }
             case "ack" {
