@@ -130,13 +130,13 @@ sub Run{
                 $self->pkg_fail($arch, $package);
             }
             case "next" {
-                my ($ou, $cn, $arch, $builder) = @{$orders}[2,3,4,5];
-                my $next = $self->get_next_package($builder, $arch);
+                my ($arch, $builder) = @{$orders}[2,3];
+                my $next = $self->get_next_package($arch, $builder);
                 if ($next) {
-                    $self->pkg_work(@{$next}[1], $builder, $arch);
-                    $q_svc->enqueue(['db', 'next', $ou, $cn, { command => 'next', repo => $next->[0], pkgbase => $next->[1] }]);
+                    $self->pkg_work(@{$next}[1], $arch, $builder);
+                    $q_svc->enqueue(['db', 'next', $arch, $builder, { command => 'next', repo => $next->[0], pkgbase => $next->[1] }]);
                 } else {
-                    $q_svc->enqueue(['db', 'next', $ou, $cn, { command => 'next', pkgbase => "FAIL" }]);
+                    $q_svc->enqueue(['db', 'next', $arch, $builder, { command => 'next', pkgbase => "FAIL" }]);
                 }
             }
         }
@@ -176,7 +176,7 @@ sub disconnect {
 }
 
 sub get_next_package{
-    my ($self, $builder, $arch) = @_;
+    my ($self, $arch, $builder) = @_;
     if( defined($self->{dbh}) ){
     	$self->{dbh}->do("update $arch set builder = null where builder = '$builder'");
         my $sql = "select
@@ -366,7 +366,7 @@ sub pkg_add {
 
 # assign builder to package
 sub pkg_work {
-    my ($self, $package, $builder, $arch) = @_;
+    my ($self, $package, $arch, $builder) = @_;
     $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = ?, a.start = unix_timestamp() where abs.package = ?", undef, $builder, $package)
 }
 
