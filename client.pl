@@ -96,13 +96,13 @@ sub cb_verify_cb {
     while (my ($type, $name) = splice @cert_alt, 0, 2) {
         if ($type == Net::SSLeay::GEN_IPADD()) {
             if ($ip eq $name) {
-                print "verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert));
+                print "verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert)) ."\n";
                 return 1;
             }
         }
     }
     
-    print "failed verification for $ref->{peername}: ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert));
+    print "failed verification for $ref->{peername}: ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert)) ."\n";
     return 0;
 }
 
@@ -252,7 +252,8 @@ sub cb_add {
         my ($pkgdesc) = $info =~ m/Description\s*: (.*)\n?/;
         
         # construct message for server
-        my %reply = ( pkgbase   => $state->{pkgbase},
+        my %reply = ( command   => "add",
+                      pkgbase   => $state->{pkgbase},
                       pkgname   => $pkgname,
                       pkgdesc   => $pkgdesc,
                       repo      => $state->{repo},
