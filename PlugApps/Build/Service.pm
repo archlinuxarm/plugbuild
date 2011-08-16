@@ -52,7 +52,7 @@ sub Run {
 # callback for accepting a new connection
 sub cb_accept {
     my ($self, $fh, $address) = @_;
-    die $! unless $fh;
+    return unless $fh;
     
     print "address: $address\n";
     my $h;

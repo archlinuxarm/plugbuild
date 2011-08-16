@@ -73,8 +73,8 @@ sub con {
             no_delay    => 1,
             rtimeout    => 3, # 3 seconds to authenticate with SSL before destruction
             on_rtimeout => sub { $h->destroy; $condvar->broadcast; },
-            on_error    => sub { print "cb_error\n"; cb_error(@_); },
-            on_starttls => sub { print "cb_starttls\n"; cb_starttls(@_); }
+            on_error    => sub { cb_error(@_); },
+            on_starttls => sub { cb_starttls(@_); }
             ;
     };
 }
