@@ -109,7 +109,7 @@ sub cb_verify_cb {
         }
     }
     
-    $q_irc->enqueue(['svc', 'print', "[SVC] failed verification for $ip:". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
+    $q_irc->enqueue(['svc', 'print', "[SVC] failed verification for $ref->{peername}: ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
     return 0;
 }
 
@@ -132,8 +132,8 @@ sub cb_starttls {
     my ($self, $handle, $success, $error) = @_;
     
     if ($success) {
-        $handle->rtimeout(0);                           # stop auto-destruct
-        undef $handle->rbuf_max;                        # enable read buffer
+        $handle->rtimeout(0);       # stop auto-destruct
+        undef $handle->{rbuf_max};  # enable read buffer
         $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });    # set read callback
         return;
     }

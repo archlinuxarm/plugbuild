@@ -10,6 +10,7 @@ use AnyEvent;
 use AnyEvent::TLS;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
+use JSON::XS;
 
 ####### BEGIN USER CONFIGURATION #######
 
@@ -41,37 +42,42 @@ my %files;
 my $condvar = AnyEvent->condvar;
 my $h;
 
-tcp_connect $server, $port, sub {
-    my ($fh, $address) = @_;
-    die $! unless $fh;
-    
-    $h = new AnyEvent::Handle
-                            fh          => $fh,
-                            tls         => "connect",
-                            peername    => $address,
-                            tls_ctx     => {
-                                            verify          => 1,
-                                            ca_file         => $ca_file,
-                                            cert_file       => $cert_file,
-                                            cert_password   => $password,
-                                            verify_cb       => sub { cb_verify_cb(@_); }
-                                            },
-                            keepalive   => 1,
-                            no_delay    => 1,
-                            rtimeout    => 3, # 3 seconds to authenticate with SSL before destruction
-                            on_rtimeout => sub { $h->destroy; $condvar->broadcast; },
-                            on_error    => sub { cb_error(@_); },
-                            on_starttls => sub { cb_starttls(@_); }
-                            ;
-
 # main event loop
+con();
 $condvar->wait;
 
 # shutdown
 $h->destroy;
-return;
+
 
 ### control subroutines
+
+# connect
+sub con {
+    tcp_connect $server, $port, sub {
+        my ($fh, $address) = @_;
+        die $! unless $fh;
+        
+        $h = new AnyEvent::Handle
+            fh          => $fh,
+            tls         => "connect",
+            peername    => $address,
+            tls_ctx     => {
+                            verify          => 1,
+                            ca_file         => $ca_file,
+                            cert_file       => $cert_file,
+                            cert_password   => $password,
+                            verify_cb       => sub { cb_verify_cb(@_); }
+                            },
+            keepalive   => 1,
+            no_delay    => 1,
+            rtimeout    => 3, # 3 seconds to authenticate with SSL before destruction
+            on_rtimeout => sub { $h->destroy; $condvar->broadcast; },
+            on_error    => sub { print "cb_error\n"; cb_error(@_); },
+            on_starttls => sub { print "cb_starttls\n"; cb_starttls(@_); }
+            ;
+    };
+}
 
 # callback that handles peer certificate verification
 sub cb_verify_cb {
@@ -96,13 +102,13 @@ sub cb_verify_cb {
         }
     }
     
-    print "failed verification for $ip:". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert));
+    print "failed verification for $ref->{peername}: ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert));
     return 0;
 }
 
 # callback on socket error
 sub cb_error {
-    my ($self, $handle, $fatal, $message) = @_;
+    my ($handle, $fatal, $message) = @_;
     
     if ($fatal) {
         print "fatal ";
@@ -113,13 +119,12 @@ sub cb_error {
 
 # callback on whether ssl auth succeeded
 sub cb_starttls {
-    my ($self, $handle, $success, $error) = @_;
+    my ($handle, $success, $error) = @_;
     
     if ($success) {
-        $handle->rtimeout(0);                           # stop auto-destruct
-        $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });    # set read callback
-        
-        $handle->push_write(json => { command => 'next' });
+        $handle->rtimeout(0);   # stop auto-destruct
+        $handle->on_read(sub { $handle->push_read(json => sub { cb_read(@_); }) });    # set read callback
+        $handle->push_write(json => { command => 'next' }); # RM: push build
         return;
     }
     
@@ -242,8 +247,9 @@ sub cb_add {
     # upload a file
     if (my ($filename, $md5sum) = each(%files)) {
         # query file for extra information
-        # $pkgname = the pkgname for this file
-        # $pkgdesc = description of package
+        my $info = `pacman -Qip $pkgdest/$filename`;
+        my ($pkgname) = $info =~ m/Name\s*: (.*)\n?/;
+        my ($pkgdesc) = $info =~ m/Description\s*: (.*)\n?/;
         
         # construct message for server
         my %reply = ( pkgbase   => $state->{pkgbase},
