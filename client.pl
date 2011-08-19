@@ -37,6 +37,7 @@ my $workurl     = "http://archlinuxarm.org/builder/work";
 my $state;
 my $child;
 my %files;
+my $timer;
 
 # AnyEvent setup
 my $condvar = AnyEvent->condvar;
@@ -77,6 +78,9 @@ sub con {
             on_starttls => sub { cb_starttls(@_); }
             ;
     };
+    
+    # connection keepalive ping/pong action
+    $timer = AnyEvent->timer(interval => 60, after => 60, cb => sub { $h->push_write(json => { command => 'ping' }); });
 }
 
 # callback that handles peer certificate verification

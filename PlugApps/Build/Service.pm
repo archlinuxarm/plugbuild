@@ -204,6 +204,11 @@ sub cb_read {
                     $q_db->enqueue(['svc', 'next', $client->{ou}, $client->{cn}]);
                 }
                 
+                # connection keepalive ping/pong action
+                case "ping" {
+                    $handle->push_write(json => $data);
+                }
+                
                 # prepare database/repo for incoming new package
                 #  - pkgbase    => top level package name
                 case "prep" {
