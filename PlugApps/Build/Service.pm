@@ -266,7 +266,6 @@ sub cb_readfile {
             $handle->push_write(json => { command => 'uploaded' });
         } else {
             $handle->unshift_read(chunk => $len, sub {
-                print " -> file write\n";
                 my ($handle, $data) = @_;
                 my $file = $self->{clients}->{$handle}->{file};
                 print $file $data if $file;

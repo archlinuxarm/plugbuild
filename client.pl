@@ -17,7 +17,6 @@ use JSON::XS;
 # plugbuild server
 my $server      = "archlinuxarm.org";
 my $port        = 2123;
-my $fileport    = 2124;
 
 # chroot location
 my $chroot      = "/root/chroot";
