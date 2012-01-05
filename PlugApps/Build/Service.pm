@@ -40,13 +40,13 @@ sub Run {
     
     if ($available->down_nb()) {
         # start-up
-        my $guard = tcp_server undef, $self->{port}, sub { $self->cb_accept(@_); };
+        my $service = tcp_server undef, $self->{port}, sub { $self->cb_accept(@_, 0); };
         my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(@_); });
         $self->{condvar}->wait;
         
         # shutdown
         undef $timer;
-        $guard->cancel;
+        $service->cancel;
         while (my ($key, $value) = each %clients) {
             $value->{handle}->destroy;
         }
@@ -130,8 +130,11 @@ sub cb_error {
     
     if ($fatal) {
         print "fatal ";
-        if (defined $self->{clients}->{$handle}->{cn}) {
+        if (defined $self->{clients}->{$handle}->{cn}) {    # delete our OU/CN reference if it exists
             $q_irc->enqueue(['svc', 'print', "[SVC] $self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn} disconnected: $message"]);
+            if ($self->{clients}->{$handle}->{file}) {      # close out file if it's open
+                close $self->{clients}->{$handle}->{file};
+            }
             delete $self->{clientsref}->{"$self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn}"};
         }
         delete $self->{clients}->{$handle};
@@ -146,7 +149,7 @@ sub cb_starttls {
     if ($success) {
         $handle->rtimeout(0);       # stop auto-destruct
         undef $handle->{rbuf_max};  # enable read buffer
-        $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });    # set read callback
+        $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });  # set read callback
         return;
     }
     
@@ -194,7 +197,7 @@ sub cb_read {
                 #  - pkgbase    => top level package name
                 case "fail" {
                     print "   -> package fail: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
-                    $q_irc->enqueue(['svc','print',"[fail] $client->{ou}/$client->{cn} $data"]);
+                    $q_irc->enqueue(['svc','print',"[fail] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
                     $q_db->enqueue(['svc','fail',$client->{ou},$data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
                 }
@@ -202,6 +205,23 @@ sub cb_read {
                 # request for new package
                 case "next" {
                     $q_db->enqueue(['svc', 'next', $client->{ou}, $client->{cn}]);
+                }
+                
+                # open file for writing
+                #  - type       => 'pkg' or 'log'
+                #  - filename   => filename to be uploaded
+                case "open" {
+                    print "   -> $client->{ou}/$client->{cn}: opening $data->{type} file $data->{filename}\n";
+                    my $file;
+                    if ($data->{type} eq "pkg") {
+                        open $file, ">$self->{in_pkg}/$data->{filename}";
+                        binmode $file;
+                    } elsif ($data->{type} eq "log") {
+                        open $file, ">$self->{in_log}/$data->{filename}";
+                    }
+                    $client->{file} = $file;
+                    $handle->on_read(sub { $self->cb_readfile(@_); });
+                    $handle->push_write(json => $data); # ACK via original hash
                 }
                 
                 # connection keepalive ping/pong action
@@ -215,6 +235,14 @@ sub cb_read {
                     print "   -> preparing package: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
                     $q_db->enqueue(['svc', 'prep', $client->{ou}, $client->{cn}, $data]);
                 }
+                
+                # release build from client (no ACK since this is usually from client termination)
+                #  - pkgbase    => top level package name
+                case "release" {
+                    print "   -> releasing package: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
+                    $q_irc->enqueue(['svc','print',"[released] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
+                    $q_db->enqueue(['svc', 'release', $client->{ou}, $client->{cn}, $data]);
+                }
             }
         }
         
@@ -223,6 +251,28 @@ sub cb_read {
             print "TODO\n";
         }
     }
+}
+
+sub cb_readfile {
+    my ($self, $handle) = @_;
+    
+    $handle->unshift_read(chunk => 4, sub {
+        my ($handle, $data) = @_;
+        my $len = unpack "N", $data;
+        if ($len == 0) {
+            close $self->{clients}->{$handle}->{file};
+            undef $self->{clients}->{$handle}->{file};
+            $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });
+            $handle->push_write(json => { command => 'uploaded' });
+        } else {
+            $handle->unshift_read(chunk => $len, sub {
+                print " -> file write\n";
+                my ($handle, $data) = @_;
+                my $file = $self->{clients}->{$handle}->{file};
+                print $file $data if $file;
+            });
+        }
+    });
 }
 
 # callback for the queue timer
@@ -249,7 +299,7 @@ sub cb_queue {
                 my ($ou, $cn, $data) = @{$msg}[2,3,4];
                 my $handle = $self->{clientsref}->{"$ou/$cn"};
                 
-                $handle->push_write(json => $data);
+                $handle->push_write(json => $data) if defined $handle;
             }
         }
         if ($order eq 'quit' || $order eq 'recycle'){

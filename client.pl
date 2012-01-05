@@ -15,11 +15,12 @@ use JSON::XS;
 ####### BEGIN USER CONFIGURATION #######
 
 # plugbuild server
-my $server  = "archlinuxarm.org";
-my $port    = 2123;
+my $server      = "archlinuxarm.org";
+my $port        = 2123;
+my $fileport    = 2124;
 
 # chroot location
-my $chroot = "/root/chroot";
+my $chroot      = "/root/chroot";
 
 # SSL certificate info (use $Bin for script execution dir)
 my $ca_file     = "$Bin/certs/plugbuild-cacert.pem";    # our CA certificate
@@ -36,12 +37,16 @@ my $workurl     = "http://archlinuxarm.org/builder/work";
 
 my $state;
 my $child;
+my $childpid;
 my %files;
+my $current_filename;
+my $current_fh;
 my $timer;
 
 # AnyEvent setup
 my $condvar = AnyEvent->condvar;
 my $h;
+my $w = AnyEvent->signal (signal => "INT", cb => sub { bailout(); });
 
 # main event loop
 con();
@@ -53,7 +58,23 @@ $h->destroy;
 
 ### control subroutines
 
-# connect
+# SIGINT catcher
+sub bailout {
+    print "\n\nCaught SIGINT, shutting down..\n";
+    if ($state->{command} ne 'idle') {
+        undef $child;
+        kill 'INT', -$childpid;
+        
+        $state->{command} = 'release';
+        $h->on_drain(sub { $condvar->broadcast; });
+        $h->push_write(json => $state);
+    } else {
+        $condvar->broadcast;
+    }
+}
+
+
+# connect to service
 sub con {
     tcp_connect $server, $port, sub {
         my ($fh, $address) = @_;
@@ -136,6 +157,8 @@ sub cb_starttls {
     $condvar->broadcast;
 }
 
+my $count = 0;
+
 # callback for reading data
 sub cb_read {
     my ($handle, $data) = @_;
@@ -148,8 +171,13 @@ sub cb_read {
         }
         case ["done", "fail"] {
             if ($state->{command} eq $data->{command} && $state->{pkgbase} eq $data->{pkgbase}) {
-                print "ACK: $state->{command}\n";
-                $handle->push_write(json => { command => 'next'}); # RM: push build
+                print "ACK: $state->{command}, setting idle\n";
+                $state->{command} = 'idle';
+                $count++;
+                if ($count < 2) {
+                    $handle->push_write(json => { command => 'next'}); # RM: push build
+                }
+                #$handle->push_write(json => { command => 'next'}); # RM: push build
             }
         }
         case "next" {
@@ -160,8 +188,26 @@ sub cb_read {
                 build_start($data->{repo}, $data->{pkgbase});
             }
         }
+        case "open" {
+            $handle->on_drain(sub { cb_upload(@_); });
+            cb_upload();
+        }
         case "prep" {
-            cb_add();
+            my $filename = $current_filename;
+            $filename =~ s/^\/.*\///;
+            my %reply = ( command   => "open",
+                          type      => "pkg",
+                          filename  => $filename);
+            $handle->push_write(json => \%reply);
+        }
+        case "uploaded" {
+            if ($state->{command} eq "fail") { # we're done, just uploaded a log
+                $handle->push_write(json => $state);
+                delete $files{$current_filename};
+                undef $current_filename;
+            } else {
+                cb_add();
+            }
         }
     }
 }
@@ -169,13 +215,13 @@ sub cb_read {
 sub build_start {
     my ($repo, $pkgbase) = @_;
     
-    my $pid = fork();
-    if (!defined $pid) {
+    my $childpid = fork();
+    if (!defined $childpid) {
         print "error: can't fork\n";
         $condvar->broadcast;
         return;
-    } elsif ($pid) {
-        $child = AnyEvent->child(pid => $pid, cb => \&build_finish);
+    } elsif ($childpid) {
+        $child = AnyEvent->child(pid => $childpid, cb => \&build_finish);
         return;
     }
     
@@ -201,33 +247,38 @@ sub build_start {
 
 sub build_finish {
     my ($pid, $status) = @_;
+    my %reply;
     
     # build failed
 	if ($status) {
         # upload log
-        my ($logfile) = glob("$chroot/copy/build/*-build.log");
+        my ($logfile) = glob("$chroot/copy/build/*-package.log") ||
+                        glob("$chroot/copy/build/*-check.log")   ||
+                        glob("$chroot/copy/build/*-build.log");
         if ($logfile) {
-            print " -> uploading $logfile\n";
-            my $result = `curl --form uploaded=\@$logfile --form press=Upload http://archlinuxarm.org:81/builder/uplog.php`;
-            if ($result eq "FAIL") {
-                print "    -> failed\n";
-            }
+            $files{$logfile} = 0;
+            $current_filename = $logfile;
+            $logfile =~ s/^\/.*\///;
+            %reply = ( command   => "open",
+                       type      => "log",
+                       filename  => $logfile);
         }
         
-        # communicate fail
+        # set fail state
         $state->{command} = 'fail';
-        $h->push_write(json => $state);
+        $h->push_write(json => \%reply);
     }
 	
     # build succeeded
     else {
         # enumerate packages for upload
         foreach my $filename (glob("$pkgdest/*")) {
-            $filename =~ s/^\/.*\///;
+            #$filename =~ s/^\/.*\///;
             next if ($filename eq "");
-            my $md5sum_file = `md5sum $pkgdest/$filename`;
+            my $md5sum_file = `md5sum $filename`;
             $md5sum_file = (split(/ /, $md5sum_file))[0];
             $files{$filename} = $md5sum_file;
+            $current_filename = $filename;
         }
         
         # prepare server for upload
@@ -236,22 +287,39 @@ sub build_finish {
     }
 }
 
+sub cb_upload {
+    if ($current_fh) {
+        my ($data, $bytes);
+        $bytes = read $current_fh, $data, 1024;
+        if ($bytes) {
+            $bytes = pack "N", $bytes;
+            $data = $bytes . $data;
+            $h->push_write($data);
+        } else {
+            print "-> sending zero\n";
+            $bytes = pack "N", $bytes;
+            undef $h->{on_drain};   # stop drain event
+            $h->push_write($bytes);
+            close $current_fh;
+            undef $current_fh;
+        }
+    } else {
+        print "-> opening $current_filename\n";
+        open $current_fh, "<$current_filename";
+        binmode $current_fh if ($state->{command} ne 'fail');
+    }
+}
+
 sub cb_add {
     my $data = shift;
     
-    # delete successfully uploaded file from our list
-    if (defined $data) {
-        if ($data->{response} eq "OK") {
-            delete $files{$data->{filename}};
-        } elsif ($data->{response} eq "FAIL") {
-            print " -> failed to upload file, continuing cycle\n";
-        }
-    }
-    
-    # upload a file
-    if (my ($filename, $md5sum) = each(%files)) {
+    # add just uploaded file
+    if (!defined $data) {
+        my $filename = $current_filename;
+        $filename =~ s/^\/.*\///;
+        my $md5sum = $files{$current_filename};
         # query file for extra information
-        my $info = `pacman -Qip $pkgdest/$filename`;
+        my $info = `pacman -Qip $current_filename`;
         my ($pkgname) = $info =~ m/Name\s*: (.*)\n?/;
         my ($pkgdesc) = $info =~ m/Description\s*: (.*)\n?/;
         
@@ -263,25 +331,32 @@ sub cb_add {
                       repo      => $state->{repo},
                       filename  => $filename,
                       md5sum    => $md5sum );
-        
-        # upload file
-        print " -> uploading $filename ($md5sum)\n";
-        while (1) {
-            my $result = `curl --retry 5 --form uploaded=\@$pkgdest/$filename --form press=Upload http://archlinuxarm.org:81/builder/uppkg.php`;
-            chomp($result);
-            if ($result eq "ERROR") {
-                print "    -> failed to upload";
-            } else {
-                last;
-            }
-        }
-        
+                
         # communicate reply
         $h->push_write(json => \%reply);
+        return;
     }
     
-    # finished uploading
-    else {
+    # delete successfully uploaded file from our list (or not)
+    if ($data->{response} eq "OK") {
+        delete $files{$current_filename};
+        undef $current_filename;
+    } elsif ($data->{response} eq "FAIL") {
+        print " -> failed to upload file, trying again..\n";
+    }
+    
+    # start next file uploading or send done
+    if (!$current_filename && (my ($filename, $md5sum) = each(%files))) {
+        $current_filename = $filename;
+    }
+    if ($current_filename) {
+        my $filename = $current_filename;
+        $filename =~ s/^\/.*\///;
+        my %reply = ( command   => "open",
+                      type      => "pkg",
+                      filename  => $filename);
+        $h->push_write(json => \%reply);
+    } else {
         print " -> finished uploading, sending done\n";
         $state->{command} = 'done';
         $h->push_write(json => $state);

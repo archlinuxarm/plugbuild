@@ -144,6 +144,10 @@ sub Run{
                 $self->pkg_prep($arch, $data);
                 $q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
             }
+            case "release" {
+                my ($arch, $builder, $data) = @{$orders}[2,3,4];
+                $self->pkg_release($data->{pkgbase}, $arch, $builder);
+            }
         }
     }
     ##
@@ -401,6 +405,12 @@ sub pkg_work {
     $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = ?, a.start = unix_timestamp() where abs.package = ?", undef, $builder, $package)
 }
 
+# release builder from package
+sub pkg_release {
+    my ($self, $package, $arch, $builder) = @_;
+    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.start = unix_timestamp() where abs.package = ?", undef, $builder, $package)
+}
+
 # set package done
 sub pkg_done {
     my ($self, $arch, $package) = @_;
@@ -482,7 +492,7 @@ sub update {
             # update abs table regardless of new version
             $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?)
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = 0, del = 0, importance = ?",
-                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $importance);
+                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $importance);
             
             # create work unit package regardless of new version
             `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
@@ -552,7 +562,7 @@ sub update {
             $is_skip = 1 if ($db_skip);
             $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0, ?)
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0, importance = ?",
-                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $importance);
+                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $importance);
             
             # new package, different version, update, done = 0
             next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
