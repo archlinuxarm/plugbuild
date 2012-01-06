@@ -479,8 +479,8 @@ sub update {
             # skip packages without a defined plugrel
             next unless (defined $plugrel);
             
-            # set importance unless already defined in database and package hasn't switched repos
-            my $importance = $priority{$repo} unless (defined $db_importance && $db_repo eq $repo);
+            # set importance
+            my $importance = $priority{$repo};
             
             # update abs table regardless of new version
             $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?)
@@ -547,8 +547,8 @@ sub update {
             # if new, add to list
             $newlist{$pkg} = 1 if (! defined $db_pkgver);
             
-            # set importance unless already defined in database and package hasn't switched repos
-            my $importance = $priority{$repo} unless (defined $db_importance && $db_repo eq $repo);
+            # set importance
+            my $importance = $priority{$repo};
             
             # update abs table
             my $is_skip = 0;
