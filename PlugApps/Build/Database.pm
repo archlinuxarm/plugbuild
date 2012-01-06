@@ -184,44 +184,42 @@ sub disconnect {
     }
 }
 
-sub get_next_package{
+sub get_next_package {
     my ($self, $arch, $builder) = @_;
-    if( defined($self->{dbh}) ){
+    if (defined($self->{dbh})) {
     	$self->{dbh}->do("update $arch set builder = null where builder = '$builder'");
         my $sql = "select
 p.repo, p.package, p.depends, p.makedepends
 from
 abs as p
 join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-left outer join package_depends as dp on (p.id = dp.package)
-left join $arch as d on (d.id = dp.dependency)
-where p.skip = 0 and p.del = 0  
+inner join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+where p.skip = 0 and p.del = 0
 group by p.id
-having (count(dp.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1";
+having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1";
         my $db = $self->{dbh};
         my @next_pkg = $db->selectrow_array($sql);
         return undef if (!$next_pkg[0]);
         return \@next_pkg;
-    }else{
+    } else {
         return undef;
     }
 }
 
-sub ready{
+sub ready {
     my $self = shift;
     
-    if( defined($self->{dbh}) ){
+    if (defined($self->{dbh})) {
         my $v5sql = "select count(*) from (
             select
                 p.repo, p.package, p.depends, p.makedepends
                 from
                 abs as p
                     join armv5 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    left outer join package_depends as dp on (p.id = dp.package)
-                    left join armv5 as d on (d.id = dp.dependency)
+                    inner join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv5 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
                 where p.skip = 0 and p.del = 0  
                 group by p.id
-                having (count(dp.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
+                having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
             ) as xx";
         my $v7sql = "select count(*) from (
             select
@@ -229,40 +227,35 @@ sub ready{
                 from
                 abs as p
                     join armv7 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    left outer join package_depends as dp on (p.id = dp.package)
-                    left join armv7 as d on (d.id = dp.dependency)
+                    inner join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv7 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
                 where p.skip = 0 and p.del = 0  
                 group by p.id
-                having (count(dp.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
+                having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
             ) as xx";
         my @next_pkg5 = $self->{dbh}->selectrow_array($v5sql);
         my @next_pkg7 = $self->{dbh}->selectrow_array($v7sql);
         return undef if (!defined($next_pkg5[0]) && !defined($next_pkg7[0]));
         return [$next_pkg5[0], $next_pkg7[0]];
-    }else{
+    } else {
         return undef;
     }
 }
 
 sub ready_detail{
     my $self = shift;
-    my $which = shift||5;
+    my $arch = shift||5;
     
-    $which = 'armv'.$which;
+    $arch = 'armv'.$arch;
     if( defined($self->{dbh}) ){
         my $sql = "select
-           p.repo, p.package, p.depends, p.makedepends
-           from
-           abs as p
-            left outer join
-             ( select 
-                 dp.id, dp.package, d.done as 'done'
-                 from package_depends dp
-                 inner join $which as d on (d.id = dp.dependency)
-             ) as dp on (p.id = dp.package)
-            left outer join $which as a on (a.id = p.id)
-            where p.skip = 0 and p.del = 0 and a.done = 0 and a.fail = 0 and a.builder is null group by p.id
-            having (count(dp.id) = sum(dp.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance ";
+p.repo, p.package, p.depends, p.makedepends
+from
+abs as p
+join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+inner join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+where p.skip = 0 and p.del = 0
+group by p.id
+having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance";
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute();
 	my $res=undef;
@@ -644,7 +637,7 @@ sub update_continue {
         next if (!$depends && !$makedepends);
         $depends = "" unless $depends;
         $makedepends = "" unless $makedepends;
-        my $statement = "insert into package_depends (dependency, package) select distinct package, $id from package_name_provides where name in (";
+        my $statement = "insert into package_depends (dependency, package, nid) select distinct package, $id, id from package_name_provides where name in (";
         foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
             $name =~ s/(<|=|>).*//;
             $statement .= "'$name', ";
