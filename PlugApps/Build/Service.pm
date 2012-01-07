@@ -62,7 +62,6 @@ sub cb_accept {
     my ($self, $fh, $address) = @_;
     return unless $fh;
     
-    print "address: $address\n";
     my $h;
     $h = new AnyEvent::Handle
                             fh          => $fh,
@@ -113,6 +112,9 @@ sub cb_verify_cb {
                                ip       => $ref->{peername},    # dotted quad ip address
                                ou       => $orgunit,            # OU from cert - currently one of: armv5, armv7, mirror
                                cn       => $common );           # CN from cert - unique client name (previously builder name)
+                if ($orgunit eq "armv5" || $orgunit eq "armv7") {
+                    $client{state} = 'idle';                    # set idle state for newly connected builders
+                }
                 $self->{clients}->{$ref} = \%client;            # replace into instance's clients hash
                 $self->{clientsref}->{"$orgunit/$common"} = $ref;
                 return 1;
@@ -157,7 +159,7 @@ sub cb_starttls {
     $handle->destroy;
 }
 
-# callback for reading data
+# callback for reading json data
 sub cb_read {
     my ($self, $handle, $data) = @_;
     
@@ -191,6 +193,8 @@ sub cb_read {
                     $q_irc->enqueue(['svc', 'print', "[done] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
                     $q_db->enqueue(['svc', 'done', $client->{ou}, $data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
+                    $client->{state} = 'idle';
+                    $self->push_next($client->{ou});
                 }
                 
                 # build failed for package
@@ -200,14 +204,16 @@ sub cb_read {
                     $q_irc->enqueue(['svc','print',"[fail] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
                     $q_db->enqueue(['svc','fail',$client->{ou},$data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
+                    $client->{state} = 'idle';
+                    $self->push_next($client->{ou});
                 }
                 
                 # request for new package
-                case "next" {
-                    $q_db->enqueue(['svc', 'next', $client->{ou}, $client->{cn}]);
-                }
+                #case "next" {
+                #    $q_db->enqueue(['svc', 'next', $client->{ou}, $client->{cn}]);
+                #}
                 
-                # open file for writing
+                # open file for writing, change read callback to get raw data instead of json
                 #  - type       => 'pkg' or 'log'
                 #  - filename   => filename to be uploaded
                 case "open" {
@@ -236,12 +242,14 @@ sub cb_read {
                     $q_db->enqueue(['svc', 'prep', $client->{ou}, $client->{cn}, $data]);
                 }
                 
-                # release build from client (no ACK since this is usually from client termination)
+                # release build from client
                 #  - pkgbase    => top level package name
                 case "release" {
                     print "   -> releasing package: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
                     $q_irc->enqueue(['svc','print',"[released] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
                     $q_db->enqueue(['svc', 'release', $client->{ou}, $client->{cn}, $data]);
+                    $handle->push_write(json => $data); # ACK via original hash
+                    $client->{state} = 'idle';
                 }
             }
         }
@@ -253,19 +261,20 @@ sub cb_read {
     }
 }
 
+# callback for reading file data
 sub cb_readfile {
     my ($self, $handle) = @_;
     
-    $handle->unshift_read(chunk => 4, sub {
+    $handle->unshift_read(chunk => 4, sub {             # data stream chunks are prefixed by a 4-byte N pack'd length
         my ($handle, $data) = @_;
         my $len = unpack "N", $data;
-        if ($len == 0) {
+        if ($len == 0) {                                # zero length = end of stream, switch back to json parsing
             close $self->{clients}->{$handle}->{file};
             undef $self->{clients}->{$handle}->{file};
             $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });
             $handle->push_write(json => { command => 'uploaded' });
         } else {
-            $handle->unshift_read(chunk => $len, sub {
+            $handle->unshift_read(chunk => $len, sub {  # only buffer specified data length
                 my ($handle, $data) = @_;
                 my $file = $self->{clients}->{$handle}->{file};
                 print $file $data if $file;
@@ -281,30 +290,71 @@ sub cb_queue {
     if ($msg) {
         my ($from, $order) = @{$msg};
         print "SVC[$from $order]\n";
+        $order =~ s/\!// if ($from eq 'irc');
         switch($order){
-            case "next" {
-                my ($ou, $cn, $data) = @{$msg}[2,3,4];
-                my $handle = $self->{clientsref}->{"$ou/$cn"};
-                
-                print "   -> next for $ou/$cn: $data->{pkgbase}\n";
-                $handle->push_write(json => $data);
-                if ($data->{pkgbase} ne "FAIL") {
-                    $q_irc->enqueue(['svc','print',"[new] builder: $ou/$cn - package: $data->{pkgbase}"]);
-                } else {
-                    $q_irc->enqueue(['svc','print',"[new] found no package to issue $ou/$cn"]);
-                }
-            }
             case "ack" {
                 my ($ou, $cn, $data) = @{$msg}[2,3,4];
                 my $handle = $self->{clientsref}->{"$ou/$cn"};
                 
                 $handle->push_write(json => $data) if defined $handle;
             }
+            case "next" {
+                my ($ou, $cn, $data) = @{$msg}[2,3,4];
+                my $handle = $self->{clientsref}->{"$ou/$cn"};
+                
+                print "   -> next for $ou/$cn: $data->{pkgbase}\n";
+                $handle->push_write(json => $data);
+                $self->{clients}->{$handle}->{state} = 'building';
+                if ($data->{pkgbase} ne "FAIL") {
+                    $q_irc->enqueue(['svc','print',"[new] builder: $ou/$cn - package: $data->{pkgbase}"]);
+                } else {
+                    $q_irc->enqueue(['svc','print',"[new] found no package to issue $ou/$cn"]);
+                }
+            }
+            case ["start","stop"] {
+                my $what = @{$msg}[2];
+                if ($what eq '5' || $what eq '7') {
+                    $self->push_redlightgreenlight($order, "armv$what");
+                } elsif ($what eq 'all') {
+                    $self->push_redlightgreenlight($order);
+                }
+            }
         }
         if ($order eq 'quit' || $order eq 'recycle'){
             $self->{condvar}->broadcast;
             return;
         }
+    }
+}
+
+# push next packages/stop to builders
+sub push_next { shift->push_redlightgreenlight("start", $_[1]); }
+sub push_redlightgreenlight {
+    my ($self, $action, $ou) = @_;
+    my @builders;
+    my $count = 0;
+    
+    # create list of builders, optionally filtered by OU
+    foreach my $oucn (keys %{$self->{clientsref}}) {
+        next if ($ou && !($oucn =~ m/$ou\/.*/));
+        push @builders, $self->{clients}->{$self->{clientsref}->{"$oucn"}};
+    }
+    
+    # get next package for idle builders
+    foreach my $builder (@builders) {
+        if ($action eq "start") {
+            next if ($builder->{state} ne 'idle');
+            $q_db->enqueue(['svc', 'next', $builder->{ou}, $builder->{cn}]);
+            $count++;
+        } elsif ($action eq "stop") {
+            next if ($builder->{state} eq 'idle');
+            $builder->{handle}->push_write(json => {command => 'stop'});
+            $count++;
+        }
+    }
+    
+    if (!$count) {
+        $q_irc->enqueue(['svc','print',"[$action] no builders to $action"]);
     }
 }
 

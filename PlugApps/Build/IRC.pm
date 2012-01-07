@@ -170,6 +170,13 @@ sub cb_publicmsg {
                     $self->irc_priv_print("usage: !skip <package>");
                 }
             }
+			case ["!start", "!stop"] {
+				if (my ($what) = split(/ /, $arg, 2)) {
+					$q_svc->enqueue(['irc', $trigger, $what]);
+				} else {
+					$self->irc_priv_print("usage: $trigger <all|5|7>");
+				}
+			}
             case "!status" {
                 my ($arch, $pkg) = split(/ /, $arg, 2);
                 if ($pkg && ($arch eq "5" || $arch eq "7")) {

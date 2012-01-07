@@ -36,7 +36,7 @@ my $workurl     = "http://archlinuxarm.org/builder/work";
 
 my $state;
 my $child;
-my $childpid;
+my $childpid = 0;
 my %files;
 my $current_filename;
 my $current_fh;
@@ -60,9 +60,9 @@ $h->destroy;
 # SIGINT catcher
 sub bailout {
     print "\n\nCaught SIGINT, shutting down..\n";
-    if ($state->{command} ne 'idle') {
+    if ($state->{command} && $state->{command} ne 'idle') {
         undef $child;
-        kill 'INT', -$childpid;
+        kill 'TERM', -$childpid if ($childpid);
         
         $state->{command} = 'release';
         $h->on_drain(sub { $condvar->broadcast; });
@@ -148,15 +148,12 @@ sub cb_starttls {
     if ($success) {
         $handle->rtimeout(0);   # stop auto-destruct
         $handle->on_read(sub { $handle->push_read(json => sub { cb_read(@_); }) });    # set read callback
-        $handle->push_write(json => { command => 'next' }); # RM: push build
         return;
     }
     
     # kill the client, bad ssl auth
     $condvar->broadcast;
 }
-
-my $count = 0;
 
 # callback for reading data
 sub cb_read {
@@ -172,16 +169,12 @@ sub cb_read {
             if ($state->{command} eq $data->{command} && $state->{pkgbase} eq $data->{pkgbase}) {
                 print "ACK: $state->{command}, setting idle\n";
                 $state->{command} = 'idle';
-                $count++;
-                if ($count < 2) {
-                    $handle->push_write(json => { command => 'next'}); # RM: push build
-                }
-                #$handle->push_write(json => { command => 'next'}); # RM: push build
             }
         }
         case "next" {
-            if ($data->{pkgbase} eq "FAIL") { # RM: push build
-                $condvar->broadcast;
+            if ($state->{command} && $state->{command} ne "idle") { # this shouldn't happen, but just in case..
+                $data->{command} = 'release';
+                $h->push_write(json => $data);
             } else {
                 $state = $data;
                 build_start($data->{repo}, $data->{pkgbase});
@@ -199,6 +192,21 @@ sub cb_read {
                           filename  => $filename);
             $handle->push_write(json => \%reply);
         }
+        case "release" {
+            $state->{command} = 'idle';
+        }
+        case "stop" {
+            if ($state->{command} && $state->{command} ne "idle") { # also shouldn't happen
+                undef $child;
+                kill 'TERM', -$childpid if ($childpid);
+                foreach my $file (%files) {
+                    delete $files{$file};
+                }
+                undef $current_filename;
+                $state->{command} = 'release';
+                $h->push_write(json => $state);
+            }
+        }
         case "uploaded" {
             if ($state->{command} eq "fail") { # we're done, just uploaded a log
                 $handle->push_write(json => $state);
@@ -214,7 +222,7 @@ sub cb_read {
 sub build_start {
     my ($repo, $pkgbase) = @_;
     
-    my $childpid = fork();
+    $childpid = fork();
     if (!defined $childpid) {
         print "error: can't fork\n";
         $condvar->broadcast;
@@ -224,29 +232,37 @@ sub build_start {
         return;
     }
     
-    # set child thread process group
+    # set child thread process group for efficient killing
     setpgrp;
     
-	# sanitize workspace
-	chdir "$Bin";
-	`rm -rf $workroot; mkdir $workroot`;
-	`rm -rf $pkgdest; mkdir $pkgdest`;
-
-	# download/extract workunit
-	chdir "$workroot";
-	system("wget $workurl/$repo-$pkgbase.tgz");
-	system("tar -zxf $workroot/$repo-$pkgbase.tgz");
-	
-	# build package
-	chdir "$workroot/$pkgbase";
-	`sed -i "/^options=/s/force//" PKGBUILD`;
-	print " -> PKGDEST='$pkgdest' $makepkg\n";
+    # sanitize workspace
+    chdir "$Bin";
+    `rm -rf $workroot; mkdir $workroot`;
+    `rm -rf $pkgdest; mkdir $pkgdest`;
+    
+    # download/extract workunit
+    chdir "$workroot";
+    system("wget $workurl/$repo-$pkgbase.tgz");
+    system("tar -zxf $workroot/$repo-$pkgbase.tgz");
+    
+    # strip lingering illegal force option
+    chdir "$workroot/$pkgbase";
+    `sed -i "/^options=/s/force//" PKGBUILD`;
+    
+    # rebuild sources in case of old/bad checksums
+    print " -> Rebuild sources\n";
+    system("makepkg -g --asroot >> PKGBUILD");
+    
+    # build package, replace perl process with mkarchroot
+    print " -> PKGDEST='$pkgdest' $makepkg\n";
     exec("mkarchroot -u $chroot/root; PKGDEST='$pkgdest' $makepkg") or print "couldn't exec: $!";
 }
 
 sub build_finish {
     my ($pid, $status) = @_;
     my %reply;
+    
+    $childpid = 0;
     
     # build failed
 	if ($status) {
