@@ -177,6 +177,8 @@ sub cb_read {
                 # insert package into repository
                 #  - pkgbase    => top level package name
                 #  - pkgname    => individual package name
+                #  - pkgver     => package version
+                #  - pkgrel     => release number
                 #  - pkgdesc    => package description
                 #  - repo       => repository (core/extra/community/aur)
                 #  - filename   => uploaded filename.tar.xz

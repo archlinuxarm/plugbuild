@@ -328,14 +328,19 @@ sub cb_add {
         $filename =~ s/^\/.*\///;
         my $md5sum = $files{$current_filename};
         # query file for extra information
-        my $info = `pacman -Qip $current_filename`;
-        my ($pkgname) = $info =~ m/Name\s*: (.*)\n?/;
-        my ($pkgdesc) = $info =~ m/Description\s*: (.*)\n?/;
+        my $info = `tar -xOf $current_filename .PKGINFO 2>&1`;
+        my ($pkgname) = $info =~ m/pkgname = (.*)\n?/;
+        my ($pkgver) = $info =~ m/pkgver = (.*)\n?/;
+        my $pkgrel;
+        ($pkgver, $pkgrel) = split(/-/, $pkgver, 2);
+        my ($pkgdesc) = $info =~ m/pkgdesc = (.*)\n?/;
         
         # construct message for server
         my %reply = ( command   => "add",
                       pkgbase   => $state->{pkgbase},
                       pkgname   => $pkgname,
+                      pkgver    => $pkgver,
+                      pkgrel    => $pkgrel,
                       pkgdesc   => $pkgdesc,
                       repo      => $state->{repo},
                       filename  => $filename,
