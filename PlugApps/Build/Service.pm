@@ -208,11 +208,6 @@ sub cb_read {
                     $self->push_next($client->{ou});
                 }
                 
-                # request for new package
-                #case "next" {
-                #    $q_db->enqueue(['svc', 'next', $client->{ou}, $client->{cn}]);
-                #}
-                
                 # open file for writing, change read callback to get raw data instead of json
                 #  - type       => 'pkg' or 'log'
                 #  - filename   => filename to be uploaded
@@ -298,6 +293,9 @@ sub cb_queue {
                 
                 $handle->push_write(json => $data) if defined $handle;
             }
+            case "list" {
+                $self->list();
+            }
             case "next" {
                 my ($ou, $cn, $data) = @{$msg}[2,3,4];
                 my $handle = $self->{clientsref}->{"$ou/$cn"};
@@ -355,6 +353,21 @@ sub push_redlightgreenlight {
     
     if (!$count) {
         $q_irc->enqueue(['svc','print',"[$action] no builders to $action"]);
+    }
+}
+
+# list connected clients to irc
+sub list {
+    my $self = shift;
+    
+    if (!(keys %{$self->{clientsref}})) {
+        $q_irc->enqueue(['svc','print',"[list] no clients connected"]);
+        return;
+    }
+    
+    $q_irc->enqueue(['svc','print',"[list] Connected clients:"]);
+    foreach my $oucn (keys %{$self->{clientsref}}) {
+        $q_irc->enqueue(['svc','print',"[list]  - $oucn: $self->{clients}->{$self->{clientsref}->{$oucn}}->{state}"]);
     }
 }
 

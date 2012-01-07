@@ -148,6 +148,9 @@ sub cb_publicmsg {
             case "!failed" {
                 $q_db->enqueue(['irc','percent_failed',$arg]);
             }
+			case "!list" {
+				$q_svc->enqueue(['irc', 'list']);
+			}
             case "!ready" {
                 $q_db->enqueue(['irc','ready',$arg]);
             }

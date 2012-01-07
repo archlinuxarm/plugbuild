@@ -205,6 +205,7 @@ sub cb_read {
                 undef $current_filename;
                 $state->{command} = 'release';
                 $h->push_write(json => $state);
+                $childpid = 0;
             }
         }
         case "uploaded" {
