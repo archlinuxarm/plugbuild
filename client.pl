@@ -40,12 +40,13 @@ my $childpid = 0;
 my %files;
 my $current_filename;
 my $current_fh;
-my $timer;
 
 # AnyEvent setup
 my $condvar = AnyEvent->condvar;
 my $h;
-my $w = AnyEvent->signal (signal => "INT", cb => sub { bailout(); });
+my $w = AnyEvent->signal(signal => "INT", cb => sub { bailout(); });
+my $timer_ping = AnyEvent->timer(interval => 60, after => 60, cb => sub { $h->push_write(json => { command => 'ping' }); });
+my $timer_retry;
 
 # main event loop
 con();
@@ -75,32 +76,24 @@ sub bailout {
 
 # connect to service
 sub con {
-    tcp_connect $server, $port, sub {
-        my ($fh, $address) = @_;
-        die $! unless $fh;
-        
-        $h = new AnyEvent::Handle
-            fh          => $fh,
-            tls         => "connect",
-            peername    => $address,
-            tls_ctx     => {
-                            verify          => 1,
-                            ca_file         => $ca_file,
-                            cert_file       => $cert_file,
-                            cert_password   => $password,
-                            verify_cb       => sub { cb_verify_cb(@_); }
-                            },
-            keepalive   => 1,
-            no_delay    => 1,
-            rtimeout    => 3, # 3 seconds to authenticate with SSL before destruction
-            on_rtimeout => sub { $h->destroy; $condvar->broadcast; },
-            on_error    => sub { cb_error(@_); },
-            on_starttls => sub { cb_starttls(@_); }
-            ;
-    };
-    
-    # connection keepalive ping/pong action
-    $timer = AnyEvent->timer(interval => 60, after => 60, cb => sub { $h->push_write(json => { command => 'ping' }); });
+    $h = new AnyEvent::Handle
+        connect             => [$server => $port],
+        tls                 => "connect",
+        tls_ctx             => {
+                                verify          => 1,
+                                ca_file         => $ca_file,
+                                cert_file       => $cert_file,
+                                cert_password   => $password,
+                                verify_cb       => sub { cb_verify_cb(@_); }
+                                },
+        keepalive           => 1,
+        no_delay            => 1,
+        rtimeout            => 3, # 3 seconds to authenticate with SSL before destruction
+        on_rtimeout         => sub { $h->destroy; $condvar->broadcast; },
+        on_error            => sub { cb_error(@_); },
+        on_starttls         => sub { cb_starttls(@_); },
+        on_connect_error    => sub { cb_error($_[0], 0, $_[1]); }
+        ;
 }
 
 # callback that handles peer certificate verification
@@ -136,9 +129,9 @@ sub cb_error {
     
     if ($fatal) {
         print "fatal ";
-        $condvar->broadcast;
     }
     print "error from $handle->{peername} - $message\n";
+    $timer_retry = AnyEvent->timer(after => 10, cb => sub { con(); });
 }
 
 # callback on whether ssl auth succeeded
