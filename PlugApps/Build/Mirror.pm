@@ -58,9 +58,19 @@ sub update {
     if (ref($self->{mirror}->{address}) eq 'ARRAY') {
         foreach my $mirror (@{$self->{mirror}->{address}}) {
             system("rsync -rlt --delete --progress $self->{repo}->{$arch} $mirror");
+            if ($? >> 8) {
+                $q_irc->enqueue(['svc','print',"[mirror] failed to mirror to $mirror: $!"]);
+            } else {
+                $q_irc->enqueue(['svc','print',"[mirror] updated $arch on mirror $mirror"]);
+            }
         }
     } elsif (defined $self->{mirror}->{address}) {
         system("rsync -rlt --delete --progress $self->{repo}->{$arch} $self->{mirror}->{address}");
+        if ($? >> 8) {
+            $q_irc->enqueue(['svc','print',"[mirror] failed to mirror to $self->{mirror}->{address}: $!"]);
+        } else {
+            $q_irc->enqueue(['svc','print',"[mirror] updated $arch on mirror $self->{mirror}->{address}"]);
+        }
     }
 }
 
