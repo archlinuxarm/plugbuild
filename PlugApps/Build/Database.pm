@@ -12,7 +12,7 @@ use File::stat;
 # EVER.
 our $available = Thread::Semaphore->new(1);
 
-our ($q_svc, $q_db,$q_irc);
+our ($q_svc, $q_db, $q_irc, $q_mir);
 
 sub new{
     my ($class, $config) = @_;
@@ -392,6 +392,25 @@ sub pkg_prep {
     $self->{dbh}->do("update files set del = 1 where arch = ? and pkgbase = ?", undef, $arch, $data->{pkgbase});
 }
 
+# relocate packages in the repo, update files tables
+sub pkg_relocate {
+    my ($self, $pkgbase, $newrepo) = @_;
+    
+    my $rows = $self->{dbh}->selectall_arrayref("select arch, repo, pkgname, filename from files where pkgbase = ?", undef, $pkgbase);
+    foreach my $row (@$rows) {
+        my ($arch, $oldrepo, $pkgname, $filename) = @$row;
+        
+        # remove from old repo.db
+        system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$oldrepo/$oldrepo.db.tar.gz $pkgname");
+        
+        # move file
+        system("mv $self->{packaging}->{repo}->{$arch}/$oldrepo/$filename $self->{packaging}->{repo}->{$arch}/$newrepo/$filename");
+        
+        # add to new repo.db
+        system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{$arch}/$newrepo/$newrepo.db.tar.gz $self->{packaging}->{repo}->{$arch}/$newrepo/$filename");
+    }
+}
+
 # assign builder to package
 sub pkg_work {
     my ($self, $package, $arch, $builder) = @_;
@@ -482,6 +501,11 @@ sub update {
             # set importance
             my $importance = $priority{$repo};
             
+            # relocate package if repo has changed
+            if (defined $db_repo && $db_repo ne $repo) {
+                $self->pkg_relocate($pkg, $repo);
+            }
+            
             # update abs table regardless of new version
             $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?)
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = 0, del = 0, importance = ?",
@@ -549,6 +573,11 @@ sub update {
             
             # set importance
             my $importance = $priority{$repo};
+            
+            # relocate package if repo has changed
+            if (defined $db_repo && $db_repo ne $repo) {
+                $self->pkg_relocate($pkg, $repo);
+            }
             
             # update abs table
             my $is_skip = 0;
@@ -645,6 +674,7 @@ sub update_continue {
             $statement .= "'$name', ";
         }
         $statement =~ s/, $/\)/;
+        $statement .= " group by package";
         $self->{dbh}->do("$statement");
     }
     $q_irc->enqueue(['db', 'print', "Update complete."]);

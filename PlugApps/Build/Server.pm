@@ -6,6 +6,7 @@ use PlugApps::Build::Factory;
 use PlugApps::Build::Service;
 use PlugApps::Build::Database;
 use PlugApps::Build::IRC;
+use PlugApps::Build::Mirror;
 
 use Config::General qw(ParseConfig);
 use Thread::Queue;
@@ -15,16 +16,25 @@ my $q_svc = Thread::Queue->new();
 $PlugApps::Build::Service::q_svc = $q_svc;
 $PlugApps::Build::Database::q_svc = $q_svc;
 $PlugApps::Build::IRC::q_svc = $q_svc;
+$PlugApps::Build::Mirror::q_svc = $q_svc;
 
 my $q_irc = Thread::Queue->new();
 $PlugApps::Build::Service::q_irc = $q_irc;
 $PlugApps::Build::Database::q_irc = $q_irc;
 $PlugApps::Build::IRC::q_irc = $q_irc;
+$PlugApps::Build::Mirror::q_irc = $q_irc;
 
 my $q_db = Thread::Queue->new();
 $PlugApps::Build::Service::q_db = $q_db;
 $PlugApps::Build::Database::q_db = $q_db;
 $PlugApps::Build::IRC::q_db = $q_db;
+$PlugApps::Build::Mirror::q_db = $q_db;
+
+my $q_mir = Thread::Queue->new();
+$PlugApps::Build::Service::q_mir = $q_mir;
+$PlugApps::Build::Database::q_mir = $q_mir;
+$PlugApps::Build::IRC::q_mir = $q_mir;
+$PlugApps::Build::Mirror::q_mir = $q_mir;
 
 
 sub new{
@@ -49,6 +59,7 @@ sub Run{
     my $svc = $self->Service;
     my $db = $self->Database;
     my $irc = $self->IRC;
+    my $mir = $self->Mirror;
     ###
     print "SrvStart\n";
     my $s = threads->create(sub{ $svc->Run(); });
@@ -74,6 +85,12 @@ sub Run{
             $svc = $self->Service;
             threads->create(sub{ $svc->Run(); });
         }
+        if( $PlugApps::Build::Mirror::available->down_nb()){
+            $PlugApps::Build::Mirror::available->up();
+            $svc = $self->Mirror;
+            threads->create(sub{ $mir->Run(); });
+        }
+
         sleep 1;
     }
     foreach my $t (threads->list()){
@@ -84,17 +101,22 @@ sub Run{
 
 sub Service{
     my $self = shift;
-    return new PlugApps::Build::Factory('Service',$self->{config}->{server}->{service},$q_irc,$q_db);
+    return new PlugApps::Build::Factory('Service',$self->{config}->{server}->{service},$q_irc,$q_db,$q_mir);
 }
 
 sub Database{
     my $self = shift;
-    return new PlugApps::Build::Factory('Database',$self->{config}->{server}->{database},$q_svc,$q_irc)
+    return new PlugApps::Build::Factory('Database',$self->{config}->{server}->{database},$q_svc,$q_irc,$q_mir)
 }
 
 sub IRC{
     my $self = shift;
-    return new PlugApps::Build::Factory('IRC',$self->{config}->{server}->{irc},$q_svc,$q_db);
+    return new PlugApps::Build::Factory('IRC',$self->{config}->{server}->{irc},$q_svc,$q_db,$q_mir);
+}
+
+sub Mirror{
+    my $self = shift;
+    return new PlugApps::Build::Factory('Mirror',$self->{config}->{server}->{database}->{packaging},$q_svc,$q_db,$q_irc);
 }
 
 

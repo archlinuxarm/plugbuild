@@ -260,22 +260,25 @@ sub build_finish {
     
     # build failed
 	if ($status) {
-        # upload log
+        # set fail state
+        $state->{command} = 'fail';
+
+        # check for log file
         my ($logfile) = glob("$chroot/copy/build/*-package.log") ||
                         glob("$chroot/copy/build/*-check.log")   ||
                         glob("$chroot/copy/build/*-build.log");
-        if ($logfile) {
+        if ($logfile) { # set log file in upload file list
             $files{$logfile} = 0;
             $current_filename = $logfile;
             $logfile =~ s/^\/.*\///;
             %reply = ( command   => "open",
                        type      => "log",
                        filename  => $logfile);
+            $h->push_write(json => \%reply);
+        } else {        # no log, communicate failure
+            $h->push_write(json => $state);
         }
         
-        # set fail state
-        $state->{command} = 'fail';
-        $h->push_write(json => \%reply);
     }
 	
     # build succeeded

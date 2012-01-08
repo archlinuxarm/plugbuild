@@ -17,7 +17,7 @@ use JSON::XS;
 
 our $available = Thread::Semaphore->new(1);
 
-our ($q_svc,$q_db,$q_irc);
+our ($q_svc, $q_db, $q_irc, $q_mir);
 
 sub new {
     my ($class,$config) = @_;
@@ -302,11 +302,11 @@ sub cb_queue {
                 my ($ou, $cn, $data) = @{$msg}[2,3,4];
                 my $handle = $self->{clientsref}->{"$ou/$cn"};
                 
-                print "   -> next for $ou/$cn: $data->{pkgbase}\n";
-                $handle->push_write(json => $data);
-                $self->{clients}->{$handle}->{state} = 'building';
                 if ($data->{pkgbase} ne "FAIL") {
                     $q_irc->enqueue(['svc','print',"[new] builder: $ou/$cn - package: $data->{pkgbase}"]);
+                    print "   -> next for $ou/$cn: $data->{pkgbase}\n";
+                    $handle->push_write(json => $data);
+                    $self->{clients}->{$handle}->{state} = 'building';
                 } else {
                     $q_irc->enqueue(['svc','print',"[new] found no package to issue $ou/$cn"]);
                 }

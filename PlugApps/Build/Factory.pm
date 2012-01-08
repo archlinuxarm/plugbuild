@@ -6,6 +6,7 @@ package PlugApps::Build::Factory;
 use PlugApps::Build::Service;
 use PlugApps::Build::Database;
 use PlugApps::Build::IRC;
+use PlugApps::Build::Mirror;
 
 use Module::Refresh;
 my $refresher = new Module::Refresh;
