@@ -315,6 +315,7 @@ sub cb_queue {
                     $self->{clients}->{$handle}->{state} = 'building';
                 } else {
                     $q_irc->enqueue(['svc','print',"[new] found no package to issue $ou/$cn"]);
+                    $self->check_complete($ou);
                 }
             }
             case ["start","stop"] {
@@ -376,6 +377,27 @@ sub list {
     $q_irc->enqueue(['svc','print',"[list] Connected clients:"]);
     foreach my $oucn (keys %{$self->{clientsref}}) {
         $q_irc->enqueue(['svc','print',"[list]  - $oucn: $self->{clients}->{$self->{clientsref}->{$oucn}}->{state}"]);
+    }
+}
+
+# check if all builders are done for an architecture, trigger mirror sync
+sub check_complete {
+    my ($self, $arch) = @_;
+    my @builders;
+    
+    # get list of builders for specified arch
+    foreach my $oucn (keys %{$self->{clientsref}}) {
+        next if (!($oucn =~ m/$arch\/.*/));
+        push @builders, $self->{clients}->{$self->{clientsref}->{"$oucn"}};
+    }
+    
+    # determine if all builders are idle
+    my $count = 0;
+    foreach my $builder (@builders) {
+        $count++ if ($builder->{state} eq 'idle');
+    }
+    if ($count) {
+        $q_mir->enqueue(['svc', 'update', $arch]);
     }
 }
 

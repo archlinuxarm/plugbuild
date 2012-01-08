@@ -57,10 +57,10 @@ sub update {
     print "Mirror: updating $arch\n";
     if (ref($self->{mirror}->{address}) eq 'ARRAY') {
         foreach my $mirror (@{$self->{mirror}->{address}}) {
-            print "Mirror: rsync -rtl --delete $self->{repo}->{$arch} $mirror\n";
+            system("rsync -rlt --delete --progress $self->{repo}->{$arch} $mirror");
         }
     } elsif (defined $self->{mirror}->{address}) {
-        print "Mirror: rsync -rlt --delete $self->{repo}->{$arch} $self->{mirror}->{address}\n";
+        system("rsync -rlt --delete --progress $self->{repo}->{$arch} $self->{mirror}->{address}");
     }
 }
 
