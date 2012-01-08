@@ -248,6 +248,12 @@ sub cb_read {
                     $handle->push_write(json => $data); # ACK via original hash
                     $client->{state} = 'idle';
                 }
+                
+                # synchronize client state
+                case "sync" {
+                    print "   -> synchronizing $client->{ou}/$client->{cn} to $data->{state}\n";
+                    $client->{state} = $data->{state};
+                }
             }
         }
         

@@ -49,6 +49,7 @@ my $timer_ping = AnyEvent->timer(interval => 60, after => 60, cb => sub { $h->pu
 my $timer_retry;
 
 # main event loop
+$state->{command} = 'idle';
 con();
 $condvar->wait;
 
@@ -141,6 +142,13 @@ sub cb_starttls {
     if ($success) {
         $handle->rtimeout(0);   # stop auto-destruct
         $handle->on_read(sub { $handle->push_read(json => sub { cb_read(@_); }) });    # set read callback
+        my %reply = (command => 'sync');
+        if ($state->{command} eq 'idle') {
+            $reply{state} = 'idle';
+        } else {
+            $reply{state} = 'building';
+        }
+        $handle->push_write(json => \%reply);
         return;
     }
     
