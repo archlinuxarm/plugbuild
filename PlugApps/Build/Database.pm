@@ -604,9 +604,11 @@ sub update_continue {
         undef $self->{newlist};
     }
     
-    # prune abs table of deleted packages
+    # prune abs table of deleted packages, remove repo files
     foreach my $pkg (keys %dellist) {
         $self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+        $self->pkg_prep('armv5', { pkgbase => $pkg });
+        $self->pkg_prep('armv7', { pkgbase => $pkg });
     }
     
     # build package_name_provides
