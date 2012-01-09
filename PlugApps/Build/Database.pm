@@ -500,6 +500,7 @@ sub update {
             
             # relocate package if repo has changed
             if (defined $db_repo && $db_repo ne $repo) {
+                print "relocating $db_repo/$pkg to $repo\n";
                 $self->pkg_relocate($pkg, $repo);
             }
             
@@ -573,6 +574,7 @@ sub update {
             
             # relocate package if repo has changed
             if (defined $db_repo && $db_repo ne $repo) {
+                print "relocating $db_repo/$pkg to $repo\n";
                 $self->pkg_relocate($pkg, $repo);
             }
             
