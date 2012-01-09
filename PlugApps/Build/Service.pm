@@ -192,7 +192,7 @@ sub cb_read {
                 #  - pkgbase    => top level package name
                 case "done" {
                     print "   -> package done: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
-                    $q_irc->enqueue(['svc', 'print', "[done] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
+                    $q_irc->enqueue(['svc', 'print', "[\0033done\003] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
                     $q_db->enqueue(['svc', 'done', $client->{ou}, $data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
                     $client->{state} = 'idle';
@@ -203,7 +203,7 @@ sub cb_read {
                 #  - pkgbase    => top level package name
                 case "fail" {
                     print "   -> package fail: $client->{ou}/$client->{cn} $data->{pkgbase}\n";
-                    $q_irc->enqueue(['svc','print',"[fail] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
+                    $q_irc->enqueue(['svc','print',"[\0034fail\003] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
                     $q_db->enqueue(['svc','fail',$client->{ou},$data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
                     $client->{state} = 'idle';
