@@ -333,7 +333,11 @@ sub cb_queue {
 }
 
 # push next packages/stop to builders
-sub push_next { shift->push_redlightgreenlight("start", $_[1]); }
+sub push_next {
+    my ($self, $ou) = @_;
+    $self->push_redlightgreenlight("start", $ou);
+}
+
 sub push_redlightgreenlight {
     my ($self, $action, $ou) = @_;
     my @builders;
