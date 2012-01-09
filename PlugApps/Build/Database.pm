@@ -328,6 +328,7 @@ sub status{
                 }
             }else{ # zilch
                 $q_irc->enqueue(['db','print','could not find package \''.$package.'\'']);
+                last;
             }
         }
     }

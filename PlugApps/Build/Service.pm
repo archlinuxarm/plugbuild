@@ -192,8 +192,10 @@ sub cb_read {
                     $q_irc->enqueue(['svc', 'print', "[\0033done\003] $client->{ou}/$client->{cn} $data->{pkgbase}"]);
                     $q_db->enqueue(['svc', 'done', $client->{ou}, $data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
-                    $client->{state} = 'idle';
-                    $self->push_next($client->{ou});
+                    if ($client->{state} ne 'manual') {
+                        $client->{state} = 'idle';
+                        $self->push_next($client->{ou});
+                    }
                 }
                 
                 # build failed for package
