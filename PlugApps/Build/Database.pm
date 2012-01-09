@@ -311,7 +311,12 @@ sub status{
                     my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
                     my $status= sprintf("[$arch] %s: repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
                     $status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
-                    my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail, abs.skip, abs.del from package_name_provides as pn inner join package_depends as pd on (pn.package = pd.package) inner join $arch as arm on (pd.dependency = arm.id) inner join abs on (arm.id = abs.id) where arm.done = 0 and pn.name = ?", undef, $name);
+                    my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail, abs.skip, abs.del from package_name_provides as pn
+                                                                     inner join package_depends as pd on (pn.package = pd.package)
+                                                                     inner join package_name_provides as pnp on (pd.nid = pnp.id)
+                                                                     inner join $arch as arm on (pd.dependency = arm.id)
+                                                                     inner join abs on (arm.id = abs.id)
+                                                                     where pn.name = ? group by pnp.name having max(done) = 0;", undef, $name);
                     if (scalar(@{$blocklist})) {
                         $status .= ", blocked on: ";
                         foreach my $blockrow (@$blocklist) {
