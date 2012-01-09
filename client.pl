@@ -45,7 +45,7 @@ my $current_fh;
 my $condvar = AnyEvent->condvar;
 my $h;
 my $w = AnyEvent->signal(signal => "INT", cb => sub { bailout(); });
-my $timer_ping = AnyEvent->timer(interval => 60, after => 60, cb => sub { $h->push_write(json => { command => 'ping' }); });
+#my $timer_ping = AnyEvent->timer(interval => 60, after => 60, cb => sub { $h->push_write(json => { command => 'ping' }); });
 my $timer_retry;
 
 # main event loop
@@ -90,6 +90,8 @@ sub con {
         keepalive           => 1,
         no_delay            => 1,
         rtimeout            => 3, # 3 seconds to authenticate with SSL before destruction
+        wtimeout            => 60,
+        on_wtimeout         => sub { $h->push_write(json => { command => 'ping' }); },
         on_rtimeout         => sub { $h->destroy; $condvar->broadcast; },
         on_error            => sub { cb_error(@_); },
         on_starttls         => sub { cb_starttls(@_); },
@@ -310,7 +312,7 @@ sub build_finish {
 sub cb_upload {
     if ($current_fh) {
         my ($data, $bytes);
-        $bytes = read $current_fh, $data, 1024;
+        $bytes = read $current_fh, $data, 65536;
         if ($bytes) {
             $bytes = pack "N", $bytes;
             $data = $bytes . $data;
