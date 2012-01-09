@@ -45,7 +45,6 @@ my $current_fh;
 my $condvar = AnyEvent->condvar;
 my $h;
 my $w = AnyEvent->signal(signal => "INT", cb => sub { bailout(); });
-#my $timer_ping = AnyEvent->timer(interval => 60, after => 60, cb => sub { $h->push_write(json => { command => 'ping' }); });
 my $timer_retry;
 
 # main event loop
