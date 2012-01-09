@@ -337,7 +337,7 @@ sub pkg_add {
     print " -> adding $pkgname\n";
 
     # verify md5sum
-    my $md5sum_file = `md5sum $self->{packaging}->{in_pkg}/$filename`;
+    my $md5sum_file = `md5sum $self->{packaging}->{in_pkg}/$arch/$filename`;
     if ($? >> 8) {
         print "    -> md5sum failed\n";
         return 1;
@@ -350,14 +350,12 @@ sub pkg_add {
     
     # move file, repo-add it
     print "   -> adding $arch/$repo/$pkgname ($filename)..\n";
-    system("mv -f $self->{packaging}->{in_pkg}/$filename $self->{packaging}->{repo}->{armv5}/$repo") if ($arch eq "armv5");
-	system("mv -f $self->{packaging}->{in_pkg}/$filename $self->{packaging}->{repo}->{armv7}/$repo") if ($arch eq "armv7");
+    system("mv -f $self->{packaging}->{in_pkg}/$arch/$filename $self->{packaging}->{repo}->{$arch}/$repo");
     if ($? >> 8) {
         print "    -> move failed\n";
         return 1;
     }
-    system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{armv5}/$repo/$repo.db.tar.gz $self->{packaging}->{repo}->{armv5}/$repo/$filename") if ($arch eq "armv5");
-	system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{armv7}/$repo/$repo.db.tar.gz $self->{packaging}->{repo}->{armv7}/$repo/$filename") if ($arch eq "armv7");
+    system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.db.tar.gz $self->{packaging}->{repo}->{$arch}/$repo/$filename");
     if ($? >> 8) {
         print "    -> move failed\n";
         return 1;

@@ -214,7 +214,7 @@ sub cb_read {
                     print "   -> $client->{ou}/$client->{cn}: opening $data->{type} file $data->{filename}\n";
                     my $file;
                     if ($data->{type} eq "pkg") {
-                        open $file, ">$self->{in_pkg}/$data->{filename}";
+                        open $file, ">$self->{in_pkg}/$client->{ou}/$data->{filename}";
                         binmode $file;
                     } elsif ($data->{type} eq "log") {
                         open $file, ">$self->{in_log}/$data->{filename}";
