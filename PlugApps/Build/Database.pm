@@ -295,13 +295,10 @@ sub failed{
 }
 
 sub status{
-    my ($self, $arch, $package) = @_;
-    $arch = "armv$arch";
-    if( defined($package)){
-        if( $package ne ''){
-            my $sth = $self->{dbh}->prepare("select package, repo, done, fail, builder, git, abs, skip, del from abs inner join $arch as a on (abs.id = a.id) where package = ?");
-            $sth->execute($package);
-            my $ar = $sth->fetchall_arrayref();
+    my ($self, $package) = @_;
+    if(defined($package) && $package ne '') {
+        foreach my $arch ('armv5', 'armv7') {
+            my $ar = $self->{dbh}->selectall_arrayref("select package, repo, done, fail, builder, git, abs, skip, del from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
             if( scalar(@{$ar}) ){ # 1 or more
                 foreach my $r (@{$ar}){
                     my ($name, $repo, $done, $fail, $builder, $git, $abs, $skip, $del) = @{$r};
@@ -312,10 +309,10 @@ sub status{
                     $state = "skipped" if ($skip);
                     $state = "removed" if ($del);
                     my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
-                    my $status= sprintf("Status of package '%s' : repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
+                    my $status= sprintf("[$arch] %s: repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
                     $status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
                     my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail, abs.skip, abs.del from package_name_provides as pn inner join package_depends as pd on (pn.package = pd.package) inner join $arch as arm on (pd.dependency = arm.id) inner join abs on (arm.id = abs.id) where arm.done = 0 and pn.name = ?", undef, $name);
-                    if ($blocklist) {
+                    if (scalar(@{$blocklist})) {
                         $status .= ", blocked on: ";
                         foreach my $blockrow (@$blocklist) {
                             my ($blockrepo, $blockpkg, $blockfail, $blockskip, $blockdel) = @$blockrow;

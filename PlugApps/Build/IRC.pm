@@ -181,11 +181,11 @@ sub cb_publicmsg {
 				}
 			}
             case "!status" {
-                my ($arch, $pkg) = split(/ /, $arg, 2);
-                if ($pkg && ($arch eq "5" || $arch eq "7")) {
-                    $q_db->enqueue(['irc','status',$arg]);
+                my $pkg = (split(/ /, $arg, 2))[0];
+                if ($pkg) {
+                    $q_db->enqueue(['irc', 'status', $pkg]);
                 } else {
-                    $self->irc_priv_print("usage: !status <5|7> <package>");
+                    $self->irc_priv_print("usage: !status <package>");
                 }
             }
             case "!unfail" {
