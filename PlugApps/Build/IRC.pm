@@ -15,13 +15,6 @@ use Switch;
 our $available = Thread::Semaphore->new(1);
 our ($q_svc, $q_db, $q_irc, $q_mir);
 
-my $bold      = "\002";
-my $escape    = "\003";
-my $reset     = "\017";
-my $invert    = "\026";
-my $underline = "\037";
-my $red = 4;
-
 sub new {
     my ($class, $config) = @_;
     my $self = $config;
