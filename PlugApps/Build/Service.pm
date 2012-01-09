@@ -312,6 +312,7 @@ sub cb_queue {
                     $self->{clients}->{$handle}->{state} = 'building';
                 } else {
                     $q_irc->enqueue(['svc','print',"[new] found no package to issue $ou/$cn"]);
+                    $self->{clients}->{$handle}->{state} = 'idle';
                     $self->check_complete($ou);
                 }
             }
@@ -348,6 +349,7 @@ sub push_redlightgreenlight {
     foreach my $builder (@builders) {
         if ($action eq "start") {
             next if ($builder->{state} ne 'idle');
+            $builder->{state} = 'check';
             $q_db->enqueue(['svc', 'next', $builder->{ou}, $builder->{cn}]);
             $count++;
         } elsif ($action eq "stop") {
