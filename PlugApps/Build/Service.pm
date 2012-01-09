@@ -112,9 +112,6 @@ sub cb_verify_cb {
                                ip       => $ref->{peername},    # dotted quad ip address
                                ou       => $orgunit,            # OU from cert - currently one of: armv5, armv7, mirror
                                cn       => $common );           # CN from cert - unique client name (previously builder name)
-                if ($orgunit eq "armv5" || $orgunit eq "armv7") {
-                    $client{state} = 'idle';                    # set idle state for newly connected builders
-                }
                 $self->{clients}->{$ref} = \%client;            # replace into instance's clients hash
                 $self->{clientsref}->{"$orgunit/$common"} = $ref;
                 return 1;
@@ -392,11 +389,13 @@ sub check_complete {
     }
     
     # determine if all builders are idle
+    my $total = 0;
     my $count = 0;
     foreach my $builder (@builders) {
+        $total++;
         $count++ if ($builder->{state} eq 'idle');
     }
-    if ($count) {
+    if ($count == $total) {
         $q_mir->enqueue(['svc', 'update', $arch]);
     }
 }
