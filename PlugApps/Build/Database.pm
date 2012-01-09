@@ -193,7 +193,7 @@ p.repo, p.package, p.depends, p.makedepends
 from
 abs as p
 join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-inner join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
 where p.skip = 0 and p.del = 0
 group by p.id
 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1";
@@ -216,7 +216,7 @@ sub ready {
                 from
                 abs as p
                     join armv5 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    inner join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv5 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+                    left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv5 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
                 where p.skip = 0 and p.del = 0  
                 group by p.id
                 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
@@ -227,7 +227,7 @@ sub ready {
                 from
                 abs as p
                     join armv7 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    inner join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv7 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+                    left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv7 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
                 where p.skip = 0 and p.del = 0  
                 group by p.id
                 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
@@ -252,7 +252,7 @@ p.repo, p.package, p.depends, p.makedepends
 from
 abs as p
 join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-inner join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
 where p.skip = 0 and p.del = 0
 group by p.id
 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance";
