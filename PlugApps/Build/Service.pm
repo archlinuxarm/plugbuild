@@ -395,7 +395,7 @@ sub check_complete {
         $total++;
         $count++ if ($builder->{state} eq 'idle');
     }
-    if ($count == $total) {
+    if ($total && $count == $total) {
         $q_mir->enqueue(['svc', 'update', $arch]);
     }
 }
