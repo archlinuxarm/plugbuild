@@ -19,7 +19,7 @@ my $server      = "archlinuxarm.org";
 my $port        = 2123;
 
 # chroot location
-my $chroot      = "/root/chroot";
+my $chroot      = "/root/chroot";9768144
 
 # SSL certificate info (use $Bin for script execution dir)
 my $ca_file     = "$Bin/certs/plugbuild-cacert.pem";    # our CA certificate
@@ -179,6 +179,10 @@ sub cb_read {
                 $h->push_write(json => $data);
             } else {
                 $state = $data;
+                foreach my $file (keys %files) {                    # ensure there aren't lingering files
+                    delete $files{$file};
+                }
+                undef $current_filename;
                 build_start($data->{repo}, $data->{pkgbase});
             }
         }
