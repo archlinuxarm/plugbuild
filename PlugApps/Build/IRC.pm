@@ -188,6 +188,11 @@ sub cb_publicmsg {
                     $self->irc_priv_print("usage: !status <package>");
                 }
             }
+			case "!sync" {
+				$q_mir->enqueue(['irc', 'update', 'armv5']);
+				$q_mir->enqueue(['irc', 'update', 'armv7']);
+				$self->irc_priv_print("[sync] queued mirror updates");
+			}
             case "!unfail" {
                 my ($arch, $pkg) = split(/ /, $arg, 2);
                 if ($pkg && ($arch eq "5" || $arch eq "7")) {
