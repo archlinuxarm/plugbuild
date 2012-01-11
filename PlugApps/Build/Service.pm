@@ -252,6 +252,7 @@ sub cb_read {
                 case "sync" {
                     print "   -> synchronizing $client->{ou}/$client->{cn} to $data->{state}\n";
                     $client->{state} = $data->{state};
+                    $client->{pkgbase} = $data->{pkgbase} if ($data->{state} eq 'building');
                 }
             }
         }
@@ -312,9 +313,11 @@ sub cb_queue {
                     print "   -> next for $ou/$cn: $data->{pkgbase}\n";
                     $handle->push_write(json => $data);
                     $self->{clients}->{$handle}->{state} = 'building';
+                    $self->{clients}->{$handle}->{pkgbase} = $data->{pkgbase};
                 } else {
                     $q_irc->enqueue(['svc','print',"[new] found no package to issue $ou/$cn"]);
                     $self->{clients}->{$handle}->{state} = 'idle';
+                    undef $self->{clients}->{$handle}->{pkgbase};
                     $self->check_complete($ou);
                 }
             }
@@ -381,7 +384,8 @@ sub list {
     
     $q_irc->enqueue(['svc','print',"[list] Connected clients:"]);
     foreach my $oucn (keys %{$self->{clientsref}}) {
-        $q_irc->enqueue(['svc','print',"[list]  - $oucn: $self->{clients}->{$self->{clientsref}->{$oucn}}->{state}"]);
+        my $pkgbase = $self->{clients}->{$self->{clientsref}->{$oucn}}->{pkgbase} || '';
+        $q_irc->enqueue(['svc','print',"[list]  - $oucn: $self->{clients}->{$self->{clientsref}->{$oucn}}->{state} $pkgbase"]);
     }
 }
 

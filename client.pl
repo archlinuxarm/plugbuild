@@ -148,6 +148,7 @@ sub cb_starttls {
             $reply{state} = 'idle';
         } else {
             $reply{state} = 'building';
+            $reply{pkgbase} = $state->{pkgbase};
         }
         $handle->push_write(json => \%reply);
         return;
