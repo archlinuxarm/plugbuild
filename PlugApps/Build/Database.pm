@@ -677,7 +677,6 @@ sub update_continue {
             $statement .= "'$name', ";
         }
         $statement =~ s/, $/\)/;
-        $statement .= " group by package";
         $self->{dbh}->do("$statement");
     }
     $q_irc->enqueue(['db', 'print', "Update complete."]);
