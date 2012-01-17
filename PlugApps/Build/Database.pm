@@ -397,7 +397,7 @@ sub pkg_prep {
 sub pkg_relocate {
     my ($self, $pkgbase, $newrepo) = @_;
     
-    my $rows = $self->{dbh}->selectall_arrayref("select arch, repo, pkgname, filename from files where pkgbase = ?", undef, $pkgbase);
+    my $rows = $self->{dbh}->selectall_arrayref("select arch, repo, pkgname, filename from files where pkgbase = ? and del = 0", undef, $pkgbase);
     foreach my $row (@$rows) {
         my ($arch, $oldrepo, $pkgname, $filename) = @$row;
         
