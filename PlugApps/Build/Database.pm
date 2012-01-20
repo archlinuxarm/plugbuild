@@ -556,8 +556,13 @@ sub update {
             chomp($vars);
             my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends) = split(/\|/, $vars);
             if ($gitlist{$pkg}) {
-                if ("$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
+                # ALARM pkgrel bumps are tracked as added decimal numbers, strip that to determine actual differences
+                my $db_pkgrel_stripped = $db_pkgrel =~ /(.*)\.?.*/;
+                if ("$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel_stripped") {
                     $q_irc->enqueue(['db','print',"$pkg is different in git, git = $db_pkgver-$db_pkgrel, abs = $pkgver-$pkgrel"]);
+                }
+                if ($db_repo ne $repo) {
+                    $q_irc->enqueue(['db', 'print', "$pkg has been relocated in ABS, git = $db_repo, abs = $repo"]);
                 }
                 next;
             }
