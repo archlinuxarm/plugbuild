@@ -557,7 +557,8 @@ sub update {
             my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends) = split(/\|/, $vars);
             if ($gitlist{$pkg}) {
                 # ALARM pkgrel bumps are tracked as added decimal numbers, strip that to determine actual differences
-                my $db_pkgrel_stripped = $db_pkgrel =~ /(.*)\.?.*/;
+                my $db_pkgrel_stripped = $db_pkgrel;
+                $db_pkgrel_stripped =~ s/\.+.*//;
                 if ("$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel_stripped") {
                     $q_irc->enqueue(['db','print',"$pkg is different in git, git = $db_pkgver-$db_pkgrel, abs = $pkgver-$pkgrel"]);
                 }
