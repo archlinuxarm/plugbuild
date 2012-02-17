@@ -421,7 +421,7 @@ sub pkg_work {
 # release builder from package
 sub pkg_release {
     my ($self, $package, $arch, $builder) = @_;
-    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.start = unix_timestamp() where abs.package = ?", undef, $builder, $package)
+    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.start = unix_timestamp() where abs.package = ?", undef, $package)
 }
 
 # set package done
