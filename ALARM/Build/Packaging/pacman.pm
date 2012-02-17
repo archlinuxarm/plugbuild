@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 use strict;
 
-package PlugApps::Build::pacman;
+package ALARM::Build::pacman;
 
 
 

@@ -5,7 +5,7 @@
 
 use strict;
 
-package PlugApps::Build::IRC;
+package ALARM::Build::IRC;
 use AnyEvent;
 use AnyEvent::IRC::Client;
 use Thread::Queue;

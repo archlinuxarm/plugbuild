@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 use strict;
 
-package PlugApps::Build::Database;
+package ALARM::Build::Database;
 use DBI;
 use Thread::Queue;
 use Thread::Semaphore;

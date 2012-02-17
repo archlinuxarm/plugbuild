@@ -2,11 +2,11 @@
 use strict;
 use lib '.';
 
-package PlugApps::Build::Factory;
-use PlugApps::Build::Service;
-use PlugApps::Build::Database;
-use PlugApps::Build::IRC;
-use PlugApps::Build::Mirror;
+package ALARM::Build::Factory;
+use ALARM::Build::Service;
+use ALARM::Build::Database;
+use ALARM::Build::IRC;
+use ALARM::Build::Mirror;
 
 use Module::Refresh;
 my $refresher = new Module::Refresh;
@@ -18,7 +18,7 @@ sub new{
     
     my $self = undef;
     
-    my $full_want = 'PlugApps::Build::'.$want;
+    my $full_want = 'ALARM::Build::'.$want;
     # generate path to the module.
     my $want_path = $full_want;
     $want_path =~ s/::/\//g;
