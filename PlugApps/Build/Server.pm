@@ -62,9 +62,10 @@ sub Run{
     my $mir = $self->Mirror;
     ###
     print "SrvStart\n";
-    my $s = threads->create(sub{ $svc->Run(); });
     my $d = threads->create(sub{  $db->Run(); });
+    my $s = threads->create(sub{ $svc->Run(); });
     my $i = threads->create(sub{ $irc->Run(); });
+    my $m = threads->create(sub{ $mir->Run(); });
     sleep 1;
     while( threads->list(threads::running) ){
         foreach my $t (threads->list()){
