@@ -7,6 +7,8 @@ use Thread::Queue;
 use Thread::Semaphore;
 use Switch;
 use File::stat;
+use HTTP::Tiny;
+use JSON::XS;
 
 # we only ever want one instance connected to the database.
 # EVER.
@@ -466,7 +468,7 @@ sub pkg_skip {
 
 sub update {
     my $self = shift;
-    my (%gitlist, %abslist, %newlist, %dellist);
+    my (%gitlist, %abslist, %aurlist, %newlist, %dellist, @request);
     my $gitroot = $self->{packaging}->{git}->{root};
     my $absroot = $self->{packaging}->{abs}->{root};
     my $workroot = $self->{packaging}->{workroot};
@@ -605,6 +607,28 @@ sub update {
             $self->{dbh}->do("insert into armv7 (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
             $abs_count++;
         }
+    }
+    
+    # check AUR package versions
+    push @request, 'http://aur.archlinux.org/rpc.php?type=multiinfo';
+    my $rows = $self->{dbh}->selectall_arrayref("select package, pkgver, pkgrel from abs where repo = 'aur' and del = 0");
+    foreach my $row (@$rows) {
+        my ($pkg, $pkgver, $pkgrel) = @$row;
+        $aurlist{$pkg} = "$pkgver-$pkgrel";
+        push @request, "arg[]=$pkg";
+    }
+    foreach my $pkg (@{%{decode_json(%{HTTP::Tiny->new->get(join('&', @request))}->{content})}->{results}}) {
+        if ($aurlist{$pkg->{Name}} ne $pkg->{Version}) {
+            $q_irc->enqueue(['db','print',"$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
+            delete $aurlist{$pkg->{Name}};
+        }
+    }
+    if (scalar(keys %aurlist)) {
+        my @not_tracked;
+        foreach my $pkg (keys %aurlist) {
+            push @not_tracked, $pkg;
+        }
+        $q_irc->enqueue(['db','print',"Packages in AUR repo, but not in AUR: " . join(' ', @not_tracked)]);
     }
     
     # build package deletion list
