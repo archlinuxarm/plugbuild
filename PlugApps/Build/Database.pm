@@ -617,22 +617,28 @@ sub update {
         $aurlist{$pkg} = "$pkgver-$pkgrel";
         push @request, "arg[]=$pkg";
     }
-    foreach my $pkg (@{%{decode_json(%{HTTP::Tiny->new->get(join('&', @request))}->{content})}->{results}}) {
-        if ($aurlist{$pkg->{Name}} ne $pkg->{Version}) {
-            $q_irc->enqueue(['db','print',"$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
-            delete $aurlist{$pkg->{Name}};
+    my $aur_response = HTTP::Tiny->new->get(join('&', @request));   # send JSON RPC request
+    my $aur_json = decode_json($aur_response->{content});           # decode json from HTTP reply
+    if ($aur_json->{type} eq "error") {                             # error, results is a string
+        print " ---> Error retrieving AUR package information: $aur_json->{results}\n";
+    } else {                                                        # all good, results is an array of dictionaries
+        foreach my $pkg (@{$aur_json->{results}}) {
+            if ($aurlist{$pkg->{Name}} ne $pkg->{Version}) {
+                $q_irc->enqueue(['db','print',"$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
+                delete $aurlist{$pkg->{Name}};
+            }
         }
-    }
-    if (scalar(keys %aurlist)) {
-        my @not_tracked;
-        foreach my $pkg (keys %aurlist) {
-            push @not_tracked, $pkg;
+        if (scalar(keys %aurlist)) {
+            my @not_tracked;
+            foreach my $pkg (keys %aurlist) {
+                push @not_tracked, $pkg;
+            }
+            $q_irc->enqueue(['db','print',"Packages in AUR repo, but not in AUR: " . join(' ', @not_tracked)]);
         }
-        $q_irc->enqueue(['db','print',"Packages in AUR repo, but not in AUR: " . join(' ', @not_tracked)]);
     }
     
     # build package deletion list
-    my $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from abs where del = 0");
+    $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from abs where del = 0");
     foreach my $row (@$rows) {
         my ($pkg, $git, $abs) = @$row;
         next if ($git && $gitlist{$pkg});
