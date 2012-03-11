@@ -626,6 +626,8 @@ sub update {
             if ($aurlist{$pkg->{Name}} ne $pkg->{Version}) {
                 $q_irc->enqueue(['db','print',"$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
                 delete $aurlist{$pkg->{Name}};
+            } elsif ($aurlist{$pkg->{Name}}) {
+                delete $aurlist{$pkg->{Name}};                      # version checks, remove from list
             }
         }
         if (scalar(keys %aurlist)) {
