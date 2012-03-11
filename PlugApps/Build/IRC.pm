@@ -44,7 +44,7 @@ sub Run {
     $con->reg_cb(publicmsg	=> sub { $self->cb_publicmsg(@_); });
     
     # arm thread queue timer
-    $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
+    $self->{timer} = AnyEvent->timer(interval => 1, cb => sub { $self->cb_queue(); });
     
     # connect, loop
     $self->connect($con);
