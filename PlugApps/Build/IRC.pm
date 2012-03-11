@@ -60,9 +60,9 @@ sub connect {
     my ($self, $con) = @_;
 	$con->connect($self->{server}, $self->{port}, {
 		nick => $self->{nick},
-		user => $self->{nick},
+		user => $self->{user},
 		real => $self->{nick},
-		password => "$self->{nick} $self->{pass}",
+		password => "$self->{user} $self->{pass}",
 		timeout => 20 });
 }
 
