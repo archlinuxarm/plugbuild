@@ -5,7 +5,7 @@
 
 use strict;
 
-package PlugApps::Build::Mirror;
+package ALARM::Build::Mirror;
 use Thread::Queue;
 use Thread::Semaphore;
 use Switch;

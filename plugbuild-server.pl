@@ -8,6 +8,6 @@ use Getopt::Long;
 my $config_file = 'buildserver.conf';
 GetOptions('config' => \$config_file);
 
-use PlugApps::Build::Server;
-my $server = new PlugApps::Build::Server($config_file);
+use ALARM::Build::Server;
+my $server = new ALARM::Build::Server($config_file);
 $server->Run();
