@@ -399,9 +399,9 @@ sub pkg_prep {
 sub pkg_relocate {
     my ($self, $pkgbase, $newrepo) = @_;
     
-    my $rows = $self->{dbh}->selectall_arrayref("select arch, repo, pkgname, filename from files where pkgbase = ? and del = 0", undef, $pkgbase);
+    my $rows = $self->{dbh}->selectall_arrayref("select id, arch, repo, pkgname, filename from files where pkgbase = ? and del = 0", undef, $pkgbase);
     foreach my $row (@$rows) {
-        my ($arch, $oldrepo, $pkgname, $filename) = @$row;
+        my ($id, $arch, $oldrepo, $pkgname, $filename) = @$row;
         
         # remove from old repo.db
         system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$oldrepo/$oldrepo.db.tar.gz $pkgname");
@@ -411,6 +411,9 @@ sub pkg_relocate {
         
         # add to new repo.db
         system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{$arch}/$newrepo/$newrepo.db.tar.gz $self->{packaging}->{repo}->{$arch}/$newrepo/$filename");
+        
+        # update files table
+        $self->{dbh}->do("update files set repo = ? where id = ?", undef, $newrepo, $id);
     }
 }
 
