@@ -339,7 +339,7 @@ sub status{
 sub pkg_add {
     my ($self, $arch, $data) = @_;
     my $repo = $data->{repo};
-    my $pkgname = $data->{pkgbase};
+    my $pkgname = $data->{pkgname};
     my $filename = $data->{filename};
     my $md5sum_sent = $data->{md5sum};
     print " -> adding $pkgname\n";
