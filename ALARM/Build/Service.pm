@@ -14,6 +14,7 @@ use AnyEvent::TLS;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
 use JSON::XS;
+use HTTP::Parser::XS qw(parse_http_request);
 
 our $available = Thread::Semaphore->new(1);
 
@@ -148,7 +149,11 @@ sub cb_starttls {
     if ($success) {
         $handle->rtimeout(0);       # stop auto-destruct
         undef $handle->{rbuf_max};  # enable read buffer
-        $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });  # set read callback
+        if ($self->{clients}->{$handle}->{ou} eq "admin") {
+            $handle->push_read(line => qr/\x0d?\x0a\x0d?\x0a/, sub { $self->cb_wsinit(@_); });  # set websocket init callback
+        } else {
+            $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });  # set read callback
+        }
         return;
     }
     
@@ -257,9 +262,13 @@ sub cb_read {
             }
         }
         
-        # mirror client
-        case "mirror" {
-            print "TODO\n";
+        # admin client
+        case "admin" {
+            switch ($data->{command}) {
+                case "echo" {
+                    $handle->push_write("\x00" . encode_json($data) . "\xff");
+                }
+            }
         }
     }
 }
@@ -410,6 +419,53 @@ sub check_complete {
     if ($total && $count == $total) {
         $q_mir->enqueue(['svc', 'update', $arch]);
     }
+}
+
+# websocket initialization callback
+sub cb_wsinit {
+    my ($h, $hdr) = @_;
+
+    my $err;
+    my $r = parse_http_request($hdr . "\x0d\x0a\x0d\x0a/", \my %env);
+    $err++ if $r < 0;
+    $err++ unless $env{HTTP_CONNECTION} eq 'Upgrade'
+              and $env{HTTP_UPGRADE} eq 'WebSocket';
+    if ($err) {
+        undef $h;
+        return;
+    }
+
+    # handle handshake
+    my $k1 = join '', grep /\d/, split '', $env{HTTP_SEC_WEBSOCKET_KEY1};
+    my $k2 = join '', grep /\d/, split '', $env{HTTP_SEC_WEBSOCKET_KEY2};
+    my $s1 = () = $env{HTTP_SEC_WEBSOCKET_KEY1} =~ /(\s)/g;
+    my $s2 = () = $env{HTTP_SEC_WEBSOCKET_KEY2} =~ /(\s)/g;
+
+    my $byte = pack('NN', $k1/$s1, $k2/$s2);
+
+    $h->push_read(chunk => 8, sub {
+        my ($h, $chunk) = @_;
+        
+        my $handshake = join "\x0d\x0a",
+            'HTTP/1.1 101 Web Socket Protocol Handshake',
+            'Upgrade: WebSocket',
+            'Connection: Upgrade',
+            "Sec-WebSocket-Origin: $env{HTTP_ORIGIN}",
+            "Sec-WebSocket-Location: ws://$env{HTTP_HOST}$env{PATH_INFO}",
+            '', md5($byte . $chunk);
+        $h->push_write($handshake);
+        
+        # set up permanent read callback
+        $h->on_read(sub {
+            shift->push_read(line => "\xff", sub {
+                my ($h, $json) = @_;
+                
+                $json =~ s/^\0//;
+                my $data = decode_json($json);
+                $self->cb_read($h, $data);
+            }
+        });
+    });
 }
 
 1;
