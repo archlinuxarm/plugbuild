@@ -370,8 +370,8 @@ sub pkg_add {
     }
     
     # add package to file table
-    $self->{dbh}->do("insert into files (arch, repo, pkgbase, pkgname, pkgver, pkgrel, pkgdesc, filename, md5sum) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                     undef, $arch, $repo, $data->{pkgbase}, $pkgname, $data->{pkgver}, $data->{pkgrel}, $data->{pkgdesc}, $filename, $md5sum_sent);
+    $self->{dbh}->do("insert into files (arch, repo, pkgbase, pkgname, pkgver, pkgrel, pkgdesc, search, filename, md5sum) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     undef, $arch, $repo, $data->{pkgbase}, $pkgname, $data->{pkgver}, $data->{pkgrel}, $data->{pkgdesc}, "$pkgname $data->{pkgdesc}", $filename, $md5sum_sent);
      
     return 0;
 }
