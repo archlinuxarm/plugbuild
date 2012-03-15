@@ -320,7 +320,7 @@ sub status{
                     $state = "skipped" if ($skip);
                     $state = "removed" if ($del);
                     my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
-                    my $status= sprintf("[$arch] %s ($pkgver-$pkgrel|$repover-$reporel): repo=>%s, src=>%s, state=>%s",$name,$repo,$source,$state);
+                    my $status = sprintf("[$arch] %s (%s|%s): repo=>%s, src=>%s, state=>%s", $name, "$pkgver-$pkgrel", "$repover-$reporel", $repo, $source, $state);
                     $status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
                     my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail, abs.skip, abs.del from package_name_provides as pn
                                                                      inner join package_depends as pd on (pn.package = pd.package)
@@ -622,7 +622,7 @@ sub update {
     }
     
     # build package deletion list
-    $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from abs where del = 0");
+    my $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from abs where del = 0");
     foreach my $row (@$rows) {
         my ($pkg, $git, $abs) = @$row;
         next if ($git && $gitlist{$pkg});

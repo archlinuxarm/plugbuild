@@ -423,7 +423,7 @@ sub check_complete {
 
 # websocket initialization callback
 sub cb_wsinit {
-    my ($h, $hdr) = @_;
+    my ($self, $h, $hdr) = @_;
 
     my $err;
     my $r = parse_http_request($hdr . "\x0d\x0a\x0d\x0a/", \my %env);
@@ -463,7 +463,7 @@ sub cb_wsinit {
                 $json =~ s/^\0//;
                 my $data = decode_json($json);
                 $self->cb_read($h, $data);
-            }
+            });
         });
     });
 }
