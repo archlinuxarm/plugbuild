@@ -45,6 +45,9 @@ sub Run{
         }
         switch ($order) {
             # irc orders
+            case "aur_check" {
+                $self->aur_check();
+            }
             case "continue" {
                 if (defined $self->{dellist}) {
                     $self->update_continue();
@@ -471,7 +474,7 @@ sub pkg_skip {
 
 sub update {
     my $self = shift;
-    my (%gitlist, %abslist, %aurlist, %newlist, %dellist, @request);
+    my (%gitlist, %abslist, %newlist, %dellist);
     my $gitroot = $self->{packaging}->{git}->{root};
     my $absroot = $self->{packaging}->{abs}->{root};
     my $workroot = $self->{packaging}->{workroot};
@@ -612,36 +615,6 @@ sub update {
         }
     }
     
-    # check AUR package versions
-    push @request, 'http://aur.archlinux.org/rpc.php?type=multiinfo';
-    my $rows = $self->{dbh}->selectall_arrayref("select package, pkgver, pkgrel from abs where repo = 'aur' and del = 0");
-    foreach my $row (@$rows) {
-        my ($pkg, $pkgver, $pkgrel) = @$row;
-        $aurlist{$pkg} = "$pkgver-$pkgrel";
-        push @request, "arg[]=$pkg";
-    }
-    my $aur_response = HTTP::Tiny->new->get(join('&', @request));   # send JSON RPC request
-    my $aur_json = decode_json($aur_response->{content});           # decode json from HTTP reply
-    if ($aur_json->{type} eq "error") {                             # error, results is a string
-        print " ---> Error retrieving AUR package information: $aur_json->{results}\n";
-    } else {                                                        # all good, results is an array of dictionaries
-        foreach my $pkg (@{$aur_json->{results}}) {
-            if ($aurlist{$pkg->{Name}} ne $pkg->{Version}) {
-                $q_irc->enqueue(['db','print',"$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
-                delete $aurlist{$pkg->{Name}};
-            } elsif ($aurlist{$pkg->{Name}}) {
-                delete $aurlist{$pkg->{Name}};                      # version checks, remove from list
-            }
-        }
-        if (scalar(keys %aurlist)) {
-            my @not_tracked;
-            foreach my $pkg (keys %aurlist) {
-                push @not_tracked, $pkg;
-            }
-            $q_irc->enqueue(['db','print',"Packages in AUR repo, but not in AUR: " . join(' ', @not_tracked)]);
-        }
-    }
-    
     # build package deletion list
     $rows = $self->{dbh}->selectall_arrayref("select package, git, abs from abs where del = 0");
     foreach my $row (@$rows) {
@@ -723,6 +696,7 @@ sub update_continue {
     $q_irc->enqueue(['db', 'print', "Update complete."]);
 }
 
+# print out packages to review for large package removal from ABS
 sub review {
     my $self = shift;
     my %newlist = %{$self->{newlist}};
@@ -738,6 +712,41 @@ sub review {
     }
     $q_irc->enqueue(['db', 'print', scalar(keys %newlist) . " new:$new"]);
     $q_irc->enqueue(['db', 'print', scalar(keys %dellist) . " deleted:$del"]);
+}
+
+# check AUR package versions
+sub aur_check {
+    my ($self) = shift;
+    my (%aurlist, @request);
+    
+    push @request, 'http://aur.archlinux.org/rpc.php?type=multiinfo';
+    my $rows = $self->{dbh}->selectall_arrayref("select package, pkgver, pkgrel from abs where repo = 'aur' and del = 0");
+    foreach my $row (@$rows) {
+        my ($pkg, $pkgver, $pkgrel) = @$row;
+        $aurlist{$pkg} = "$pkgver-$pkgrel";
+        push @request, "arg[]=$pkg";
+    }
+    my $aur_response = HTTP::Tiny->new->get(join('&', @request));   # send JSON RPC request
+    my $aur_json = decode_json($aur_response->{content});           # decode json from HTTP reply
+    if ($aur_json->{type} eq "error") {                             # error, results is a string
+        print " ---> Error retrieving AUR package information: $aur_json->{results}\n";
+    } else {                                                        # all good, results is an array of dictionaries
+        foreach my $pkg (@{$aur_json->{results}}) {
+            if ($aurlist{$pkg->{Name}} ne $pkg->{Version}) {
+                $q_irc->enqueue(['db','print',"$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
+                delete $aurlist{$pkg->{Name}};
+            } elsif ($aurlist{$pkg->{Name}}) {
+                delete $aurlist{$pkg->{Name}};                      # version checks, remove from list
+            }
+        }
+        if (scalar(keys %aurlist)) {
+            my @not_tracked;
+            foreach my $pkg (keys %aurlist) {
+                push @not_tracked, $pkg;
+            }
+            $q_irc->enqueue(['db','print',"Packages in AUR repo, but not in AUR: " . join(' ', @not_tracked)]);
+        }
+    }
 }
 
 1;
