@@ -14,7 +14,6 @@ use AnyEvent::TLS;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
 use JSON::XS;
-use HTTP::Parser::XS qw(parse_http_request);
 
 our $available = Thread::Semaphore->new(1);
 
@@ -42,6 +41,7 @@ sub Run {
     if ($available->down_nb()) {
         # start-up
         my $service = tcp_server undef, $self->{port}, sub { $self->cb_accept(@_, 0); };
+        my $nodesvc = tcp_server "127.0.0.1", $self->{port}+1, sub { $self->node_accept(@_, 0); };
         my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(@_); });
         $self->{condvar}->wait;
         
@@ -89,6 +89,39 @@ sub cb_accept {
     $self->{clients}->{$h} = $h;
 }
 
+# callback for accepting internal nodejs connection (only one allowed)
+sub node_accept {
+    my ($self, $fh, $address) = @_;
+    return unless $fh;
+    
+    # purge any previous nodejs connection
+    if (defined $self->{clientsref}->{"admin/nodejs"}) {
+        print "[SVC] dropping previous nodejs connection\n";
+        my $h_old = $self->{clientsref}->{"admin/nodejs"};
+        delete $self->{clientsref}->{"admin/nodejs"};
+        delete $self->{clients}->{$h_old};
+        $h_old->destroy;
+    }
+    
+    my $h;
+    $h = new AnyEvent::Handle
+                            fh          => $fh,
+                            peername    => $address,
+                            keepalive   => 1,
+                            no_delay    => 1,
+                            on_error    => sub { $self->cb_error(@_); },
+                            on_read     => sub { $self->cb_read(@_); }
+                            ;
+    
+    $q_irc->enqueue(['svc', 'print', "[SVC] NodeJS accepted on $address"]);
+    my %client = ( handle   => $h,              # connection handle - must be preserved
+                   ip       => $address,        # dotted quad ip address
+                   ou       => "admin",         # OU = admin
+                   cn       => "nodejs" );      # CN = nodejs
+    $self->{clients}->{$h} = \%client;
+    $self->{clientsref}->{"admin/nodejs"} = $h;
+}
+
 # callback that handles peer certificate verification
 sub cb_verify_cb {
     my ($self, $tls, $ref, $cn, $depth, $preverify_ok, $x509_store_ctx, $cert) = @_;
@@ -111,7 +144,7 @@ sub cb_verify_cb {
                 $q_irc->enqueue(['svc', 'print', "[SVC] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
                 my %client = ( handle   => $ref,                # connection handle - must be preserved
                                ip       => $ref->{peername},    # dotted quad ip address
-                               ou       => $orgunit,            # OU from cert - currently one of: armv5, armv7, mirror
+                               ou       => $orgunit,            # OU from cert - currently one of: armv5, armv7
                                cn       => $common );           # CN from cert - unique client name (previously builder name)
                 $self->{clients}->{$ref} = \%client;            # replace into instance's clients hash
                 $self->{clientsref}->{"$orgunit/$common"} = $ref;
@@ -132,7 +165,7 @@ sub cb_error {
         print "fatal ";
         if (defined $self->{clients}->{$handle}->{cn}) {    # delete our OU/CN reference if it exists
             $q_irc->enqueue(['svc', 'print', "[SVC] $self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn} disconnected: $message"]);
-            if ($self->{clients}->{$handle}->{file}) {      # close out file if it's open
+            if (defined $self->{clients}->{$handle}->{file}) {      # close out file if it's open
                 close $self->{clients}->{$handle}->{file};
             }
             delete $self->{clientsref}->{"$self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn}"};
@@ -149,11 +182,7 @@ sub cb_starttls {
     if ($success) {
         $handle->rtimeout(0);       # stop auto-destruct
         undef $handle->{rbuf_max};  # enable read buffer
-        if ($self->{clients}->{$handle}->{ou} eq "admin") {
-            $handle->push_read(line => qr/\x0d?\x0a\x0d?\x0a/, sub { $self->cb_wsinit(@_); });  # set websocket init callback
-        } else {
-            $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });  # set read callback
-        }
+        $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });  # set read callback
         return;
     }
     
@@ -262,11 +291,11 @@ sub cb_read {
             }
         }
         
-        # admin client
+        # admin client (nodejs)
         case "admin" {
             switch ($data->{command}) {
                 case "echo" {
-                    $handle->push_write("\x00" . encode_json($data) . "\xff");
+                    $handle->push_write(json => $data);
                 }
             }
         }
@@ -419,53 +448,6 @@ sub check_complete {
     if ($total && $count == $total) {
         $q_mir->enqueue(['svc', 'update', $arch]);
     }
-}
-
-# websocket initialization callback
-sub cb_wsinit {
-    my ($self, $h, $hdr) = @_;
-
-    my $err;
-    my $r = parse_http_request($hdr . "\x0d\x0a\x0d\x0a/", \my %env);
-    $err++ if $r < 0;
-    $err++ unless $env{HTTP_CONNECTION} eq 'Upgrade'
-              and $env{HTTP_UPGRADE} eq 'WebSocket';
-    if ($err) {
-        undef $h;
-        return;
-    }
-
-    # handle handshake
-    my $k1 = join '', grep /\d/, split '', $env{HTTP_SEC_WEBSOCKET_KEY1};
-    my $k2 = join '', grep /\d/, split '', $env{HTTP_SEC_WEBSOCKET_KEY2};
-    my $s1 = () = $env{HTTP_SEC_WEBSOCKET_KEY1} =~ /(\s)/g;
-    my $s2 = () = $env{HTTP_SEC_WEBSOCKET_KEY2} =~ /(\s)/g;
-
-    my $byte = pack('NN', $k1/$s1, $k2/$s2);
-
-    $h->push_read(chunk => 8, sub {
-        my ($h, $chunk) = @_;
-        
-        my $handshake = join "\x0d\x0a",
-            'HTTP/1.1 101 Web Socket Protocol Handshake',
-            'Upgrade: WebSocket',
-            'Connection: Upgrade',
-            "Sec-WebSocket-Origin: $env{HTTP_ORIGIN}",
-            "Sec-WebSocket-Location: ws://$env{HTTP_HOST}$env{PATH_INFO}",
-            '', md5($byte . $chunk);
-        $h->push_write($handshake);
-        
-        # set up permanent read callback
-        $h->on_read(sub {
-            shift->push_read(line => "\xff", sub {
-                my ($h, $json) = @_;
-                
-                $json =~ s/^\0//;
-                my $data = decode_json($json);
-                $self->cb_read($h, $data);
-            });
-        });
-    });
 }
 
 1;
