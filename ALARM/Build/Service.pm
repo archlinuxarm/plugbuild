@@ -294,6 +294,9 @@ sub cb_read {
         # admin client (nodejs)
         case "admin" {
             switch ($data->{command}) {
+                case "dump" {
+                    $q_db->enqueue(['svc', 'dump', $client->{ou}, $client->{cn}, $data]);
+                }
                 case "echo" {
                     $handle->push_write(json => $data);
                 }

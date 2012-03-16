@@ -130,6 +130,15 @@ sub Run{
                 my ($arch, $package) = @{$orders}[2,3];
             	$self->pkg_done($arch, $package);
             }
+            case "dump" {
+                my ($ou, $cn, $data) = @{$orders}[2,3,4];
+                my $rows = $self->{dbh}->selectall_hashref(
+                    "select package, repo, armv5.done as v5_done, armv5.fail as v5_fail, armv7.done as v7_done, armv7.fail as v7_fail
+                     from abs inner join armv5 on (abs.id = armv5.id) inner join armv7 on (abs.id = armv7.id)
+                     where del = 0 and skip = 0", "package");
+                $data->{dump} = $rows;
+                $q_svc->enqueue(['db', 'ack', $ou, $cn, $data]);
+            }
             case "fail" {
             	my ($arch, $package) = @{$orders}[2,3];
                 $self->pkg_fail($arch, $package);
