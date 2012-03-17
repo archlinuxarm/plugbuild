@@ -311,6 +311,7 @@ sub cb_read {
         # admin client (nodejs)
         case "admin" {
             switch ($data->{command}) {
+                # dump package and builder states
                 case "dump" {
                     print "[SVC] admin -> dump\n";
                     $q_db->enqueue(['svc', 'dump', $client->{ou}, $client->{cn}, $data]);
@@ -324,9 +325,12 @@ sub cb_read {
                         }
                     }
                 }
+                
+                # echo the received json back
                 case "echo" {
                     print "[SVC] admin -> echo\n";
                     $handle->push_write(json => $data);
+                    $handle->push_write("\000");
                 }
             }
         }
