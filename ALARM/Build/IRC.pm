@@ -86,7 +86,7 @@ sub irc_priv_print {
         $msg = substr($msg, 0, $i);
     }
     $self->{con}->send_msg(PRIVMSG => '#'.$self->{channel}, "$msg");
-    $q_svc->enqueue(['irc', 'update', { command => 'update', type => 'console', console => $msg }]);
+    $q_svc->enqueue(['irc', 'admin', { command => 'update', type => 'console', console => $msg }]);
 }
 
 # callback for socket connection - sleep and reconnect on error

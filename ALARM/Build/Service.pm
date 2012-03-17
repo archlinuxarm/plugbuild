@@ -166,7 +166,7 @@ sub cb_error {
         if (defined $self->{clients}->{$handle}->{cn}) {    # delete our OU/CN reference if it exists
             $q_irc->enqueue(['svc', 'print', "[SVC] $self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn} disconnected: $message"]);
             if ($self->{clients}->{$handle}->{ou} eq "armv5" || $self->{clients}->{$handle}->{ou} eq "armv7") {
-                $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'builder', builder => { fqn => "$self->{clients}->{$handle}->{cn}/$self->{clients}->{$handle}->{ou}", state => 'disconnect' } }]);
+                $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$self->{clients}->{$handle}->{cn}/$self->{clients}->{$handle}->{ou}", state => 'disconnect' } }]);
             }
             if (defined $self->{clients}->{$handle}->{file}) {      # close out file if it's open
                 close $self->{clients}->{$handle}->{file};
@@ -234,8 +234,8 @@ sub cb_read {
                         $self->push_next($client->{ou});
                     }
                     
-                    $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'package', package => { state => 'done', arch => $client->{ou}, package => $data->{pkgbase} } }]);
-                    $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'done', arch => $client->{ou}, package => $data->{pkgbase} } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
                 }
                 
                 # build failed for package
@@ -248,8 +248,8 @@ sub cb_read {
                     $client->{state} = 'idle';
                     $self->push_next($client->{ou});
                     
-                    $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'package', package => { state => 'fail', arch => $client->{ou}, package => $data->{pkgbase} } }]);
-                    $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'fail', arch => $client->{ou}, package => $data->{pkgbase} } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
                 }
                 
                 # open file for writing, change read callback to get raw data instead of json
@@ -290,8 +290,8 @@ sub cb_read {
                     $handle->push_write(json => $data); # ACK via original hash
                     $client->{state} = 'idle';
                     
-                    $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'package', package => { state => 'release', arch => $client->{ou}, package => $data->{pkgbase} } }]);
-                    $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'release', arch => $client->{ou}, package => $data->{pkgbase} } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
                 }
                 
                 # synchronize client state
@@ -300,9 +300,9 @@ sub cb_read {
                     $client->{state} = $data->{state};
                     if ($data->{state} eq 'building') {
                         $client->{pkgbase} = $data->{pkgbase};
-                        $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'building', package => $data->{pkgbase} } }]);
+                        $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'building', package => $data->{pkgbase} } }]);
                     } else {
-                        $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
+                        $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
                     }
                 }
             }
@@ -318,9 +318,9 @@ sub cb_read {
                         next if (!($oucn =~ m/armv.\/.*/));
                         my $builder = $self->{clients}->{$self->{clientsref}->{$oucn}};
                         if ($builder->{state} eq 'idle') {
-                            $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'builder', builder => { fqn => "$builder->{ou}/$builder->{cn}", state => 'idle' } }]);
+                            $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$builder->{ou}/$builder->{cn}", state => 'idle' } }]);
                         } else {
-                            $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'builder', builder => { fqn => "$builder->{ou}/$builder->{cn}", state => 'building', package => $builder->{pkgbase} } }]);
+                            $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$builder->{ou}/$builder->{cn}", state => 'building', package => $builder->{pkgbase} } }]);
                         }
                     }
                 }
@@ -370,6 +370,15 @@ sub cb_queue {
                 
                 $handle->push_write(json => $data) if defined $handle;
             }
+            case "admin" {
+                my ($data) = @{$msg}[2];
+                my $handle = $self->{clientsref}->{"admin/nodejs"};
+                
+                if (defined $handle) {
+                    $handle->push_write(json => $data);
+                    $handle->push_write("\000");
+                }
+            }
             case "list" {
                 $self->list();
             }
@@ -384,7 +393,7 @@ sub cb_queue {
                     $self->{clients}->{$handle}->{state} = 'building';
                     $self->{clients}->{$handle}->{pkgbase} = $data->{pkgbase};
                     
-                    $q_svc->enqueue(['svc', 'update', { command => 'update', type => 'builder', builder => { fqn => "$ou/$cn", state => 'building', package => $data->{pkgbase} } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$ou/$cn", state => 'building', package => $data->{pkgbase} } }]);
                 } else {
                     $q_irc->enqueue(['svc','print',"[new] found no package to issue $ou/$cn"]);
                     $self->{clients}->{$handle}->{state} = 'idle';
@@ -399,12 +408,6 @@ sub cb_queue {
                 } elsif ($what eq 'all') {
                     $self->push_redlightgreenlight($order);
                 }
-            }
-            case "update" {
-                my ($data) = @{$msg}[2];
-                my $handle = $self->{clientsref}->{"admin/nodejs"};
-                
-                $handle->push_write(json => $data) if defined $handle;
             }
         }
         if ($order eq 'quit' || $order eq 'recycle'){
