@@ -138,7 +138,7 @@ sub Run{
                      from abs inner join armv5 on (abs.id = armv5.id) inner join armv7 on (abs.id = armv7.id)
                      where del = 0 and skip = 0", "package"));
                 $data->{dump} = $rows;
-                $q_svc->enqueue(['db', 'ack', $ou, $cn, $data]);
+                $q_svc->enqueue(['db', 'admin', $data]);
             }
             case "fail" {
             	my ($arch, $package) = @{$orders}[2,3];
