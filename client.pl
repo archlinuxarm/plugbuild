@@ -5,6 +5,7 @@
 
 use strict;
 use FindBin qw($Bin);
+use Config::General qw(ParseConfig);
 use Switch;
 use AnyEvent;
 use AnyEvent::TLS;
@@ -12,7 +13,7 @@ use AnyEvent::Handle;
 use AnyEvent::Socket;
 use JSON::XS;
 
-####### BEGIN USER CONFIGURATION #######
+my %config = ParseConfig("$Bin/client.conf");
 
 # plugbuild server
 my $server      = "archlinuxarm.org";
