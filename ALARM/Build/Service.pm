@@ -166,7 +166,7 @@ sub cb_error {
         if (defined $self->{clients}->{$handle}->{cn}) {    # delete our OU/CN reference if it exists
             $q_irc->enqueue(['svc', 'print', "[SVC] $self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn} disconnected: $message"]);
             if ($self->{clients}->{$handle}->{ou} eq "armv5" || $self->{clients}->{$handle}->{ou} eq "armv7") {
-                $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$self->{clients}->{$handle}->{cn}/$self->{clients}->{$handle}->{ou}", state => 'disconnect' } }]);
+                $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn}", state => 'disconnect' } }]);
             }
             if (defined $self->{clients}->{$handle}->{file}) {      # close out file if it's open
                 close $self->{clients}->{$handle}->{file};
