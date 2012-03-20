@@ -15,22 +15,7 @@ use JSON::XS;
 
 my %config = ParseConfig("$Bin/client.conf");
 
-# plugbuild server
-my $server      = "archlinuxarm.org";
-my $port        = 2123;
-
-# chroot location
-my $chroot      = "/root/chroot";
-
-# SSL certificate info (use $Bin for script execution dir)
-my $ca_file     = "$Bin/certs/plugbuild-cacert.pem";    # our CA certificate
-my $cert_file   = "$Bin/certs/client.pem";              # combined key and cert pem
-my $password    = "sekrit";                             # key password (maybe make this interactive)
-
-######## END USER CONFIGURATION ########
-
 # other variables, probably shouldn't touch these
-my $makepkg     = "makechrootpkg -cr $chroot -- -AcsfrL";
 my $workroot    = "$Bin/work";
 my $pkgdest     = "$Bin/pkgdest";
 my $workurl     = "http://archlinuxarm.org/builder/work";
@@ -78,13 +63,13 @@ sub bailout {
 # connect to service
 sub con {
     $h = new AnyEvent::Handle
-        connect             => [$server => $port],
+        connect             => [$config{server} => $config{port}],
         tls                 => "connect",
         tls_ctx             => {
                                 verify          => 1,
-                                ca_file         => $ca_file,
-                                cert_file       => $cert_file,
-                                cert_password   => $password,
+                                ca_file         => $config{ca_file},
+                                cert_file       => $config{cert_file},
+                                cert_password   => $config{password},
                                 verify_cb       => sub { cb_verify_cb(@_); }
                                 },
         keepalive           => 1,
@@ -151,6 +136,8 @@ sub cb_starttls {
             $reply{state} = 'building';
             $reply{pkgbase} = $state->{pkgbase};
         }
+        $reply{primary} = $config{primary};
+        $reply{available} = $config{available};
         $handle->push_write(json => \%reply);
         return;
     }
@@ -185,7 +172,7 @@ sub cb_read {
                     delete $files{$file};
                 }
                 undef $current_filename;
-                build_start($data->{repo}, $data->{pkgbase});
+                build_start($data->{arch}, $data->{repo}, $data->{pkgbase});
             }
         }
         case "open" {
@@ -197,6 +184,7 @@ sub cb_read {
             $filename =~ s/^\/.*\///;
             my %reply = ( command   => "open",
                           type      => "pkg",
+                          arch      => $state->{arch},
                           filename  => $filename);
             $handle->push_write(json => \%reply);
         }
@@ -229,7 +217,7 @@ sub cb_read {
 }
 
 sub build_start {
-    my ($repo, $pkgbase) = @_;
+    my ($arch, $repo, $pkgbase) = @_;
     
     $childpid = fork();
     if (!defined $childpid) {
@@ -263,8 +251,8 @@ sub build_start {
     system("makepkg -g --asroot >> PKGBUILD");
     
     # build package, replace perl process with mkarchroot
-    print " -> PKGDEST='$pkgdest' $makepkg\n";
-    exec("mkarchroot -u $chroot/root; PKGDEST='$pkgdest' $makepkg") or print "couldn't exec: $!";
+    print " -> Building package\n";
+    exec("mkarchroot -u $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cr $config{$arch}{chroot} -- -AcsfrL") or print "couldn't exec: $!";
 }
 
 sub build_finish {
@@ -279,9 +267,9 @@ sub build_finish {
         $state->{command} = 'fail';
 
         # check for log file
-        my ($logfile) = glob("$chroot/copy/build/*-package.log") ||
-                        glob("$chroot/copy/build/*-check.log")   ||
-                        glob("$chroot/copy/build/*-build.log");
+        my ($logfile) = glob("$config{$arch}{chroot}/copy/build/*-package.log") ||
+                        glob("$config{$arch}{chroot}/copy/build/*-check.log")   ||
+                        glob("$config{$arch}{chroot}/copy/build/*-build.log");
         if ($logfile) { # set log file in upload file list
             $files{$logfile} = 0;
             $current_filename = $logfile;
