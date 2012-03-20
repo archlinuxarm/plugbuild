@@ -296,7 +296,7 @@ sub cb_read {
                 
                 # synchronize client state
                 case "sync" {
-                    print "   -> synchronizing $client->{ou}/$client->{cn} to $data->{state}\n";
+                    print "   -> synchronizing $client->{ou}/$client->{cn} to $data->{state} - primary: $data->{primary}, available: " . join(', ', ref($data->{available}) eq 'ARRAY' ? @$data->{available} : $data->{available}) . "\n";
                     $client->{state} = $data->{state};
                     if ($data->{state} eq 'building') {
                         $client->{pkgbase} = $data->{pkgbase};
@@ -304,6 +304,8 @@ sub cb_read {
                     } else {
                         $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
                     }
+                    $client->{primary} = $data->{primary};
+                    $client->{available} = $data->{available};
                 }
             }
         }
@@ -408,6 +410,7 @@ sub cb_queue {
             case ["start","stop"] {
                 my $what = @{$msg}[2];
                 if ($what eq '5' || $what eq '7') {
+                    $self->{"armv$what"} = 'active';
                     $self->push_redlightgreenlight($order, "armv$what");
                 } elsif ($what eq 'all') {
                     $self->push_redlightgreenlight($order);
