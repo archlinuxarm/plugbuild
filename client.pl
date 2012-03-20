@@ -267,9 +267,9 @@ sub build_finish {
         $state->{command} = 'fail';
 
         # check for log file
-        my ($logfile) = glob("$config{$arch}{chroot}/copy/build/*-package.log") ||
-                        glob("$config{$arch}{chroot}/copy/build/*-check.log")   ||
-                        glob("$config{$arch}{chroot}/copy/build/*-build.log");
+        my ($logfile) = glob("$config{$state->{arch}}{chroot}/copy/build/*-package.log") ||
+                        glob("$config{$state->{arch}}{chroot}/copy/build/*-check.log")   ||
+                        glob("$config{$state->{arch}}{chroot}/copy/build/*-build.log");
         if ($logfile) { # set log file in upload file list
             $files{$logfile} = 0;
             $current_filename = $logfile;
