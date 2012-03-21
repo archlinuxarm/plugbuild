@@ -165,8 +165,8 @@ sub cb_error {
         print "fatal ";
         if (defined $self->{clients}->{$handle}->{cn}) {    # delete our OU/CN reference if it exists
             $q_irc->enqueue(['svc', 'print', "[SVC] $self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn} disconnected: $message"]);
-            if ($self->{clients}->{$handle}->{ou} eq "armv5" || $self->{clients}->{$handle}->{ou} eq "armv7") {
-                $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn}", state => 'disconnect' } }]);
+            if ($self->{clients}->{$handle}->{ou} eq "builder") {
+                $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $self->{clients}->{$handle}->{cn}, state => 'disconnect' } }]);
             }
             if (defined $self->{clients}->{$handle}->{file}) {      # close out file if it's open
                 close $self->{clients}->{$handle}->{file};
@@ -235,11 +235,15 @@ sub cb_read {
                         $client->{state} = 'idle';
                         undef $client->{pkgbase};
                         undef $client->{active};
-                        $self->push_builder('start', $client->{ou});
+                        if ($self->{$client->{primary}} eq 'start') {           # if the builder's primary is active, push for packages for that
+                            $self->push_builder('start', $client->{primary});
+                        } else {                                                # otherwise, the package's arch will still be active so push for that
+                            $self->push_builder('start', $data->{arch});
+                        }
                     }
                     
-                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'done', arch => $client->{ou}, package => $data->{pkgbase} } }]);
-                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'done', arch => $data->{arch}, package => $data->{pkgbase} } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
                 }
                 
                 # build failed for package
@@ -250,11 +254,16 @@ sub cb_read {
                     $q_irc->enqueue(['svc', 'print', "[\0034fail\003] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
                     $q_db->enqueue(['svc', 'fail', $data->{arch}, $data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
+                    undef $client->{pkgbase};
+                    undef $client->{active};
                     $client->{state} = 'idle';
-                    $self->push_builder('start', $client->{ou});
-                    
-                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'fail', arch => $client->{ou}, package => $data->{pkgbase} } }]);
-                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { fqn => "$client->{ou}/$client->{cn}", state => 'idle' } }]);
+                    if ($self->{$client->{primary}} eq 'start') {               # if the builder's primary is active, push for packages for that
+                        $self->push_builder('start', $client->{primary});
+                    } else {                                                    # otherwise, the package's arch will still be active so push for that
+                        $self->push_builder('start', $data->{arch});
+                    }
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'fail', arch => $data->{arch}, package => $data->{pkgbase} } }]);
+                    $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
                 }
                 
                 # open file for writing, change read callback to get raw data instead of json
@@ -328,7 +337,7 @@ sub cb_read {
                     print "[SVC] admin -> dump\n";
                     $q_db->enqueue(['svc', 'dump', $client->{ou}, $client->{cn}, $data]);
                     foreach my $oucn (keys %{$self->{clientsref}}) {
-                        next if (!($oucn =~ m/armv.\/.*/));
+                        next if (!($oucn =~ m/builder\/.*/));
                         my $builder = $self->{clients}->{$self->{clientsref}->{$oucn}};
                         if ($builder->{state} eq 'idle') {
                             $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $builder->{cn}, state => 'idle' } }]);
@@ -416,12 +425,14 @@ sub cb_queue {
                     $builder->{state} = 'idle';
                     undef $builder->{pkgbase};
                     undef $builder->{active};
-                    if ($self->check_complete($arch)) {
-                        if (ref($builder->{available}) eq 'ARRAY') {
-                            foreach my $test_arch (grep {$_ ne $arch} @$builder->{available}) {
-                                if ($self->{$test_arch} eq 'start') {
-                                    $self->push_builder('start', $test_arch);
-                                }
+                    $self->check_complete($arch) if ($self->{$arch} eq 'start');
+                    if ($self->{$builder->{primary}} eq 'start') {
+                        $self->push_builder('start', $builder->{primary});
+                    } elsif (ref($builder->{available}) eq 'ARRAY') {
+                        foreach my $test_arch (grep {$_ ne $arch} @$builder->{available}) {
+                            if ($self->{$test_arch} eq 'start') {
+                                $self->push_builder('start', $test_arch);
+                                last;
                             }
                         }
                     }
@@ -457,7 +468,7 @@ sub push_builder {
         my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
         
         my $use_arch = $builder->{primary};     # set to use builder's primary arch
-        if (defined $arch) {                            # though if we're starting only a specific arch..
+        if (defined $arch) {                    # though if we're starting only a specific arch..
             if (ref($builder->{available}) eq 'ARRAY' ? grep {$_ eq $arch} @$builder->{available} : $builder->{available} eq $arch) {
                 $use_arch = $arch;              # and it's available, so we can use it
             } else {
@@ -502,28 +513,23 @@ sub list {
 # check if all builders are done for an architecture, trigger mirror sync
 sub check_complete {
     my ($self, $arch) = @_;
-    my @builders;
+    my $total = 0;
+    my $count = 0;
     
     # get list of builders for specified arch
     foreach my $oucn (keys %{$self->{clientsref}}) {
-        next if (!($oucn =~ m/$arch\/.*/));
-        push @builders, $self->{clients}->{$self->{clientsref}->{"$oucn"}};
-    }
-    
-    # determine if all builders are idle
-    my $total = 0;
-    my $count = 0;
-    foreach my $builder (@builders) {
+        next if (!($oucn =~ m/builder\/.*/));
+        my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
+
+        # determine if all builders are idle or if they're building a different arch
         $total++;
-        $count++ if ($builder->{state} eq 'idle');
+        $count++ if ($builder->{state} eq 'idle' || ($builder->{state} ne 'idle' && $builder->{active} ne $arch));
     }
     if ($total && $count == $total) {
         $q_irc->enqueue(['svc','print',"[complete] found no package to issue for $arch, mirroring"]);
         $q_mir->enqueue(['svc', 'update', $arch]);
         $self->{$arch} = 'stop';
-        return 1;
     }
-    return 0;
 }
 
 1;
