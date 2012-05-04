@@ -1,0 +1,32 @@
+Echo:
+command => 'echo'
+*       => * (entire packet will get echoed back)
+
+Dump:
+command => 'dump' (this is all that needs to be sent as a request, rest is reply)
+dump    => { massive hash structure of package status }
+
+Update:
+command => 'update'
+type    => 'package'
+package =>   state   => 'done' || 'fail' || 'release'
+             arch    => 'armv5' || 'armv7'
+             package => 'package name'
+
+command => 'update'
+type    => 'builder'
+builder =>   name    => 'name'
+             state   => 'idle' || 'building' || 'disconnect'
+             arch    => 'armv5' || 'armv7' (if state == building)
+             package => 'package name' (if state == building)
+
+examples:
+{ command => 'update', type => 'package', package => { state => 'done', arch => 'armv5', package => 'coreutils' } }
+
+{ command => 'update', type => 'builder', builder => { name => 'platinum', state => 'idle' } }
+{ command => 'update', type => 'builder', builder => { name => 'platinum', state => 'building', arch => 'armv7', package => 'coreutils' } }
+
+notes:
+- builder disconnect notice should remove builder from the display
+- builder idle/building can also serve as a connect notice, should the builder not be already on the board
+- type release on a package means building was terminated, package should be changed in display (if implemented) from building to not-built for specified architecture
