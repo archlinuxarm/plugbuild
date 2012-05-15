@@ -60,16 +60,12 @@ sub update {
             system("rsync -rlt --delete $self->{repo}->{$arch} $mirror");
             if ($? >> 8) {
                 $q_irc->enqueue(['svc','print',"[mirror] failed to mirror to $mirror: $!"]);
-            } else {
-                $q_irc->enqueue(['svc','print',"[mirror] updated $arch on mirror $mirror"]);
             }
         }
     } elsif (defined $self->{mirror}->{address}) {
         system("rsync -rlt --delete $self->{repo}->{$arch} $self->{mirror}->{address}");
         if ($? >> 8) {
             $q_irc->enqueue(['svc','print',"[mirror] failed to mirror to $self->{mirror}->{address}: $!"]);
-        } else {
-            $q_irc->enqueue(['svc','print',"[mirror] updated $arch on mirror $self->{mirror}->{address}"]);
         }
     }
 }
