@@ -135,7 +135,7 @@ sub cb_starttls {
         } else {
             $reply{state} = 'building';
             $reply{pkgbase} = $state->{pkgbase};
-            $reply{active} = $state->{arch};
+            $reply{arch} = $state->{arch};
         }
         $reply{primary} = $config{primary};
         $reply{available} = $config{available};

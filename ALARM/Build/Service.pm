@@ -234,7 +234,7 @@ sub cb_read {
                     if ($client->{state} ne 'manual') {
                         $client->{state} = 'idle';
                         undef $client->{pkgbase};
-                        undef $client->{active};
+                        undef $client->{arch};
                         if ($self->{$client->{primary}} eq 'start') {           # if the builder's primary is active, push for packages for that
                             $self->push_builder('start', $client->{primary});
                         } else {                                                # otherwise, the package's arch will still be active so push for that
@@ -255,7 +255,7 @@ sub cb_read {
                     $q_db->enqueue(['svc', 'fail', $data->{arch}, $data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
                     undef $client->{pkgbase};
-                    undef $client->{active};
+                    undef $client->{arch};
                     $client->{state} = 'idle';
                     if ($self->{$client->{primary}} eq 'start') {               # if the builder's primary is active, push for packages for that
                         $self->push_builder('start', $client->{primary});
@@ -307,7 +307,7 @@ sub cb_read {
                     $handle->push_write(json => $data); # ACK via original hash
                     $client->{state} = 'idle';
                     undef $client->{pkgbase};
-                    undef $client->{active};
+                    undef $client->{arch};
                     
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'release', arch => $data->{arch}, package => $data->{pkgbase} } }]);
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
@@ -319,7 +319,7 @@ sub cb_read {
                     $client->{state} = $data->{state};
                     if ($data->{state} eq 'building') {
                         $client->{pkgbase} = $data->{pkgbase};
-                        $client->{active} = $data->{active};
+                        $client->{arch} = $data->{arch};
                         $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, arch => $client->{arch}, state => 'building', package => $data->{pkgbase} } }]);
                     } else {
                         $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
@@ -422,13 +422,13 @@ sub cb_queue {
                     $handle->push_write(json => $data);
                     $builder->{state} = 'building';
                     $builder->{pkgbase} = $data->{pkgbase};
-                    $builder->{active} = $arch;
+                    $builder->{arch} = $arch;
                     
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $cn, arch => $arch, state => 'building', package => $data->{pkgbase} } }]);
                 } else {
                     $builder->{state} = 'idle';
                     undef $builder->{pkgbase};
-                    undef $builder->{active};
+                    undef $builder->{arch};
                     $self->check_complete($arch) if ($self->{$arch} eq 'start');            # check if all builders are done on this arch
                     if ($self->{$builder->{primary}} eq 'start') {                          # check if builder's primary is still active
                         $self->push_builder('start', $builder->{primary});                  #  ..and push for a new package
@@ -450,7 +450,7 @@ sub cb_queue {
                 foreach my $oucn (keys %{$self->{clientsref}}) {
                     next if (!($oucn =~ m/builder\/.*/));
                     my $builder = $self->{clients}->{$self->{clientsref}->{$oucn}};
-                    my $info = $builder->{pkgbase} ? "$builder->{active}/$builder->{pkgbase}" : '';
+                    my $info = $builder->{pkgbase} ? "$builder->{arch}/$builder->{pkgbase}" : '';
                     $q_irc->enqueue(['svc', 'print', "[list]  - $builder->{cn}: $builder->{state} $info"]);
                 }
             }
@@ -501,7 +501,7 @@ sub push_builder {
             $count++;
         } elsif ($action eq "stop") {
             next if ($builder->{state} eq 'idle');
-            next if ($arch && $builder->{active} ne $arch);
+            next if ($arch && $builder->{arch} ne $arch);
             $builder->{handle}->push_write(json => {command => 'stop'});
             $count++;
         }
@@ -525,7 +525,7 @@ sub check_complete {
         
         # determine if all builders are idle or if they're building a different arch
         $total++;
-        $count++ if ($builder->{state} eq 'idle' || ($builder->{state} ne 'idle' && $builder->{active} ne $arch));
+        $count++ if ($builder->{state} eq 'idle' || ($builder->{state} ne 'idle' && $builder->{arch} ne $arch));
     }
     if ($total && $count == $total) {
         $q_irc->enqueue(['svc','print',"[complete] found no package to issue for $arch, mirroring"]);
