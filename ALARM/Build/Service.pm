@@ -319,6 +319,7 @@ sub cb_read {
                     $client->{state} = $data->{state};
                     if ($data->{state} eq 'building') {
                         $client->{pkgbase} = $data->{pkgbase};
+                        $client->{active} = $data->{active};
                         $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, arch => $client->{arch}, state => 'building', package => $data->{pkgbase} } }]);
                     } else {
                         $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
@@ -388,13 +389,17 @@ sub cb_queue {
         my ($from, $order) = @{$msg};
         print "SVC[$from $order]\n";
         $order =~ s/\!// if ($from eq 'irc');
-        switch($order){
+        switch($order) {
+            ## database orders
+            # ACK json back to build client
             case "ack" {
-                my ($ou, $cn, $data) = @{$msg}[2,3,4];
-                my $handle = $self->{clientsref}->{"$ou/$cn"};
+                my ($arch, $cn, $data) = @{$msg}[2,3,4];
+                my $handle = $self->{clientsref}->{"builder/$cn"};
                 
                 $handle->push_write(json => $data) if defined $handle;
             }
+            
+            # push json out to admin interface
             case "admin" {
                 my ($data) = @{$msg}[2];
                 my $handle = $self->{clientsref}->{"admin/nodejs"};
@@ -404,9 +409,8 @@ sub cb_queue {
                     $handle->push_write("\000");
                 }
             }
-            case "list" {
-                $self->list();
-            }
+            
+            # next package response
             case "next" {
                 my ($arch, $cn, $data) = @{$msg}[2,3,4];
                 my $handle = $self->{clientsref}->{"builder/$cn"};
@@ -425,19 +429,33 @@ sub cb_queue {
                     $builder->{state} = 'idle';
                     undef $builder->{pkgbase};
                     undef $builder->{active};
-                    $self->check_complete($arch) if ($self->{$arch} eq 'start');
-                    if ($self->{$builder->{primary}} eq 'start') {
-                        $self->push_builder('start', $builder->{primary});
-                    } elsif (ref($builder->{available}) eq 'ARRAY') {
+                    $self->check_complete($arch) if ($self->{$arch} eq 'start');            # check if all builders are done on this arch
+                    if ($self->{$builder->{primary}} eq 'start') {                          # check if builder's primary is still active
+                        $self->push_builder('start', $builder->{primary});                  #  ..and push for a new package
+                    } elsif (ref($builder->{available}) eq 'ARRAY') {                       # otherwise check if an available arch is active
                         foreach my $test_arch (grep {$_ ne $arch} @$builder->{available}) {
                             if ($self->{$test_arch} eq 'start') {
-                                $self->push_builder('start', $test_arch);
+                                $self->push_builder('start', $test_arch);                   #  ..and push for a new package
                                 last;
                             }
                         }
                     }
                 }
             }
+            
+            ## IRC orders
+            # list connected clients
+            case "list" {
+                $q_irc->enqueue(['svc', 'print', "[list] Connected clients:"]);
+                foreach my $oucn (keys %{$self->{clientsref}}) {
+                    next if (!($oucn =~ m/builder\/.*/));
+                    my $builder = $self->{clients}->{$self->{clientsref}->{$oucn}};
+                    my $info = $builder->{pkgbase} ? "$builder->{active}/$builder->{pkgbase}" : '';
+                    $q_irc->enqueue(['svc', 'print', "[list]  - $builder->{cn}: $builder->{state} $info"]);
+                }
+            }
+            
+            # start or stop building
             case ["start","stop"] {
                 my $what = @{$msg}[2];
                 if ($what eq '5' || $what eq '7') {
@@ -462,7 +480,7 @@ sub push_builder {
     my ($self, $action, $arch) = @_;
     my $count = 0;
     
-    # create list of builders, optionally filtered by OU
+    # create list of builders
     foreach my $oucn (keys %{$self->{clientsref}}) {
         next if (!($oucn =~ m/builder\/.*/));
         my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
@@ -494,22 +512,6 @@ sub push_builder {
     }
 }
 
-# list connected clients to irc
-sub list {
-    my $self = shift;
-    
-    if (!(keys %{$self->{clientsref}})) {
-        $q_irc->enqueue(['svc','print',"[list] no clients connected"]);
-        return;
-    }
-    
-    $q_irc->enqueue(['svc','print',"[list] Connected clients:"]);
-    foreach my $oucn (keys %{$self->{clientsref}}) {
-        my $pkgbase = $self->{clients}->{$self->{clientsref}->{$oucn}}->{pkgbase} || '';
-        $q_irc->enqueue(['svc','print',"[list]  - $oucn: $self->{clients}->{$self->{clientsref}->{$oucn}}->{state} $pkgbase"]);
-    }
-}
-
 # check if all builders are done for an architecture, trigger mirror sync
 sub check_complete {
     my ($self, $arch) = @_;
@@ -520,7 +522,7 @@ sub check_complete {
     foreach my $oucn (keys %{$self->{clientsref}}) {
         next if (!($oucn =~ m/builder\/.*/));
         my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
-
+        
         # determine if all builders are idle or if they're building a different arch
         $total++;
         $count++ if ($builder->{state} eq 'idle' || ($builder->{state} ne 'idle' && $builder->{active} ne $arch));
