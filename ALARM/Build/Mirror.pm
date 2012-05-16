@@ -68,6 +68,7 @@ sub update {
             $q_irc->enqueue(['svc','print',"[mirror] failed to mirror to $self->{mirror}->{address}: $!"]);
         }
     }
+    $q_irc->enqueue(['svc','print',"[mirror] finished mirroring $arch"]);
 }
 
 1;
