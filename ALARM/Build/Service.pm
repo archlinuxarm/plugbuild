@@ -322,6 +322,7 @@ sub cb_read {
                     if ($data->{state} eq 'building') {
                         $client->{pkgbase} = $data->{pkgbase};
                         $client->{arch} = $data->{arch};
+                        $self->{$data->{arch}} = 'start';
                         $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, arch => $client->{arch}, state => 'building', package => $data->{pkgbase} } }]);
                     } else {
                         $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
