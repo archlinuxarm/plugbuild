@@ -10,6 +10,7 @@ use Switch;
 use File::stat;
 use HTTP::Tiny;
 use JSON::XS;
+use Scalar::Util;
 
 # we only ever want one instance connected to the database.
 # EVER.
@@ -259,7 +260,7 @@ sub ready {
 sub ready_detail{
     my $self = shift;
     my $arch = shift||5;
-    $arch = (is_numeric($arch))?$arch:5;
+    $arch = (Scalar::Util::looks_like_number($arch))?$arch:5;
     $arch = 'armv'.$arch;
     if( defined($self->{dbh}) ){
         my $sql = "select
