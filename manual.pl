@@ -5,6 +5,7 @@
 
 use strict;
 use FindBin qw($Bin);
+use Config::General qw(ParseConfig);
 use Switch;
 use AnyEvent;
 use AnyEvent::TLS;
