@@ -431,13 +431,13 @@ sub cb_queue {
                     $builder->{state} = 'idle';
                     undef $builder->{pkgbase};
                     undef $builder->{arch};
-                    $self->check_complete($arch) if ($self->{$arch} eq 'start');            # check if all builders are done on this arch
-                    if ($self->{$builder->{primary}} eq 'start') {                          # check if builder's primary is still active
-                        $self->push_builder('start', $builder->{primary});                  #  ..and push for a new package
-                    } elsif (ref($builder->{available}) eq 'ARRAY') {                       # otherwise check if an available arch is active
+                    $self->check_complete($arch) if ($self->{$arch} eq 'start');                    # check if all builders are done on this arch
+                    if ($builder->{primary} ne $arch && $self->{$builder->{primary}} eq 'start') {  # check if builder's primary is still active
+                        $self->push_builder('start', $builder->{primary});                          #  ..and push for a new package
+                    } elsif (ref($builder->{available}) eq 'ARRAY') {                               # otherwise check if an available arch is active
                         foreach my $test_arch (grep {$_ ne $arch} @{$builder->{available}}) {
                             if ($self->{$test_arch} eq 'start') {
-                                $self->push_builder('start', $test_arch);                   #  ..and push for a new package
+                                $self->push_builder('start', $test_arch);                           #  ..and push for a new package
                                 last;
                             }
                         }
