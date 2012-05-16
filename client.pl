@@ -277,6 +277,7 @@ sub build_finish {
             $current_filename = $logfile;
             $logfile =~ s/^\/.*\///;
             %reply = ( command   => "open",
+                       arch      => $state->{arch},
                        type      => "log",
                        filename  => $logfile);
             $h->push_write(json => \%reply);
@@ -345,6 +346,7 @@ sub cb_add {
         
         # construct message for server
         my %reply = ( command   => "add",
+                      arch      => $state->{arch},
                       pkgbase   => $state->{pkgbase},
                       pkgname   => $pkgname,
                       pkgver    => $pkgver,
@@ -375,6 +377,7 @@ sub cb_add {
         my $filename = $current_filename;
         $filename =~ s/^\/.*\///;
         my %reply = ( command   => "open",
+                      arch      => $state->{arch},
                       type      => "pkg",
                       filename  => $filename);
         $h->push_write(json => \%reply);
