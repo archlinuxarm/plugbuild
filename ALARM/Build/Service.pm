@@ -315,7 +315,7 @@ sub cb_read {
                 
                 # synchronize client state
                 case "sync" {
-                    print "   -> synchronizing $client->{ou}/$client->{cn} to $data->{state} - primary: $data->{primary}, available: " . join(', ', ref($data->{available}) eq 'ARRAY' ? @$data->{available} : $data->{available}) . "\n";
+                    print "   -> synchronizing $client->{ou}/$client->{cn} to $data->{state} - primary: $data->{primary}, available: " . join(', ', ref($data->{available}) eq 'ARRAY' ? @{$data->{available}} : $data->{available}) . "\n";
                     $client->{state} = $data->{state};
                     if ($data->{state} eq 'building') {
                         $client->{pkgbase} = $data->{pkgbase};
@@ -433,7 +433,7 @@ sub cb_queue {
                     if ($self->{$builder->{primary}} eq 'start') {                          # check if builder's primary is still active
                         $self->push_builder('start', $builder->{primary});                  #  ..and push for a new package
                     } elsif (ref($builder->{available}) eq 'ARRAY') {                       # otherwise check if an available arch is active
-                        foreach my $test_arch (grep {$_ ne $arch} @$builder->{available}) {
+                        foreach my $test_arch (grep {$_ ne $arch} @{$builder->{available}}) {
                             if ($self->{$test_arch} eq 'start') {
                                 $self->push_builder('start', $test_arch);                   #  ..and push for a new package
                                 last;
@@ -487,7 +487,7 @@ sub push_builder {
         
         my $use_arch = $builder->{primary};     # set to use builder's primary arch
         if (defined $arch) {                    # though if we're starting only a specific arch..
-            if (ref($builder->{available}) eq 'ARRAY' ? grep {$_ eq $arch} @$builder->{available} : $builder->{available} eq $arch) {
+            if (ref($builder->{available}) eq 'ARRAY' ? grep {$_ eq $arch} @{$builder->{available}} : $builder->{available} eq $arch) {
                 $use_arch = $arch;              # and it's available, so we can use it
             } else {
                 next;                           # unless it isn't, so we check the next builder
