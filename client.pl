@@ -18,6 +18,7 @@ my %config = ParseConfig("$Bin/client.conf");
 # other variables, probably shouldn't touch these
 my $workroot    = "$Bin/work";
 my $pkgdest     = "$Bin/pkgdest";
+my $cacheroot   = "$Bin/cache";
 my $workurl     = "http://archlinuxarm.org/builder/work";
 
 my $state;
@@ -26,6 +27,12 @@ my $childpid = 0;
 my %files;
 my $current_filename;
 my $current_fh;
+
+# cache setup
+`rm -rf $cacheroot`;
+foreach my $arch (ref($config{available}) eq 'ARRAY' ? @{$config{available}} : $config{available}) {
+    `mkdir -p $cacheroot/$arch`;
+}
 
 # AnyEvent setup
 my $condvar = AnyEvent->condvar;
@@ -254,7 +261,7 @@ sub build_start {
     
     # build package, replace perl process with mkarchroot
     print " -> Building package\n";
-    exec("mkarchroot -u $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cr $config{$arch}{chroot} -- -AcsfrL") or print "couldn't exec: $!";
+    exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cr $config{$arch}{chroot} -- -AcsfrL --skippgpcheck") or print "couldn't exec: $!";
 }
 
 sub build_finish {
