@@ -29,7 +29,7 @@ sub Run {
     print "Mirror Run\n";
     
     # get mirror list
-    $q_db->enqueue(['mir'
+    $q_db->enqueue(['mir', 'mirrors']);
     
     while(my $msg = $q_mir->dequeue ){
         my ($from,$order) = @{$msg};
