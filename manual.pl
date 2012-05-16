@@ -236,7 +236,7 @@ sub cb_add {
         my $filename = $current_filename;
         $filename =~ s/^\/.*\///;
         my %reply = ( command   => "open",
-                      arch      => $config{primary};
+                      arch      => $config{primary},
                       type      => "pkg",
                       filename  => $filename);
         $h->push_write(json => \%reply);
