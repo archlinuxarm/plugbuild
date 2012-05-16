@@ -62,8 +62,8 @@ sub con {
         tls                 => "connect",
         tls_ctx             => {
                                 verify          => 1,
-                                ca_file         => $config{ca_file},
-                                cert_file       => $config{cert_file_manual},
+                                ca_file         => "$Bin/$config{ca_file}",
+                                cert_file       => "$Bin/$config{cert_file_manual}",
                                 cert_password   => $config{password},
                                 verify_cb       => sub { cb_verify_cb(@_); }
                                 },
@@ -236,6 +236,7 @@ sub cb_add {
         my $filename = $current_filename;
         $filename =~ s/^\/.*\///;
         my %reply = ( command   => "open",
+                      arch      => $config{primary};
                       type      => "pkg",
                       filename  => $filename);
         $h->push_write(json => \%reply);
