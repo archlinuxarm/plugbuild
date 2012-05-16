@@ -78,7 +78,7 @@ sub Run{
                     if ($target eq 'detail' || $detail eq 'detail') {
                         my $ready = $self->ready_detail($which);
                         $q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
-                        if( $ready->[0] > 1) {
+                        if( $ready->[0] >= 1) {
                             $q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
                         }
                     }
