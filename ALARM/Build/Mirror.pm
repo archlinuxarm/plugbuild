@@ -28,6 +28,9 @@ sub Run {
 	return if (! $available->down_nb());
     print "Mirror Run\n";
     
+    # get mirror list
+    $q_db->enqueue(['mir'
+    
     while(my $msg = $q_mir->dequeue ){
         my ($from,$order) = @{$msg};
         print "Mirror: got $order from $from\n";
@@ -38,6 +41,11 @@ sub Run {
             }
             case "recycle" {
                 last;
+            }
+            
+            # database orders
+            case "mirrors" {
+                $self->{mirrors} = @{$msg}[2];
             }
             
             # service orders
@@ -55,17 +63,10 @@ sub Run {
 sub update {
     my ($self, $arch) = @_;
     print "Mirror: updating $arch\n";
-    if (ref($self->{mirror}->{address}) eq 'ARRAY') {
-        foreach my $mirror (@{$self->{mirror}->{address}}) {
-            system("rsync -rlt --delete $self->{repo}->{$arch} $mirror");
-            if ($? >> 8) {
-                $q_irc->enqueue(['svc','print',"[mirror] failed to mirror to $mirror: $!"]);
-            }
-        }
-    } elsif (defined $self->{mirror}->{address}) {
-        system("rsync -rlt --delete $self->{repo}->{$arch} $self->{mirror}->{address}");
+    foreach my $mirror (@{$self->{mirrors}}) {
+        system("rsync -rlt --delete $self->{repo}->{$arch} $mirror");
         if ($? >> 8) {
-            $q_irc->enqueue(['svc','print',"[mirror] failed to mirror to $self->{mirror}->{address}: $!"]);
+            $q_irc->enqueue(['svc','print',"[mirror] failed to mirror to $mirror: $!"]);
         }
     }
     $q_irc->enqueue(['svc','print',"[mirror] finished mirroring $arch"]);

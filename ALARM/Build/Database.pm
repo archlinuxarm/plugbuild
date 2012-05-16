@@ -62,6 +62,27 @@ sub Run{
                 my $count = $self->count($table);
                 $q_irc->enqueue(['db','print',"$table has $count"]);
             }
+            case "mirror" {
+                my ($command, $address) = @{$orders}[2,3];
+                if ($command eq 'list') {
+                    $q_irc->enqueue(['db', 'print', "Mirror list:"]);
+                    my $rows = $self->{dbh}->selectall_arrayref("select address from mirrors");
+                    foreach my $row (@$rows) {
+                        my ($address) = @$row;
+                        $q_irc->enqueue(['db', 'print', " - $address"]);
+                    }
+                } elsif ($command eq 'add') {
+                    $self->{dbh}->do("insert into mirrors (address) values (?)", undef, $address);
+                    $q_irc->enqueue(['db', 'print', "Added mirror $address"]);
+                    my $rows = shared_clone($self->{dbh}->selectall_arrayref("select address from mirrors"));
+                    $q_mir->enqueue(['db', 'mirrors', $rows]);
+                } elsif ($command eq 'remove') {
+                    $self->{dbh}->do("delete from mirrors where address = ?", undef, $address);
+                    $q_irc->enqueue(['db', 'print', "Removed mirror $address"]);
+                    my $rows = shared_clone($self->{dbh}->selectall_arrayref("select address from mirrors"));
+                    $q_mir->enqueue(['db', 'mirrors', $rows]);
+                }
+            }
             case "percent_done" {
                 my $table = @{$orders}[2];
                 my ($done,$count) = ($self->done(),$self->count('abs'));
@@ -115,6 +136,12 @@ sub Run{
             }
             case "update" {
             	$self->update();
+            }
+            
+            # mirror orders
+            case "mirrors" {
+                my $rows = shared_clone($self->{dbh}->selectall_arrayref("select address from mirrors"));
+                $q_mir->enqueue(['db', 'mirrors', $rows]);
             }
             
             # service orders
