@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# PlugBuild Builder Client
+# PlugBuild Builder Manual Upload Client (primary architecture)
 #
 
 use strict;
@@ -12,21 +12,7 @@ use AnyEvent::Handle;
 use AnyEvent::Socket;
 use JSON::XS;
 
-####### BEGIN USER CONFIGURATION #######
-
-# plugbuild server
-my $server      = "archlinuxarm.org";
-my $port        = 2121;
-
-# chroot location
-my $chroot      = "/root/chroot";
-
-# SSL certificate info (use $Bin for script execution dir)
-my $ca_file     = "$Bin/certs/plugbuild-cacert.pem";    # our CA certificate
-my $cert_file   = "$Bin/certs/manual.pem";              # combined key and cert pem
-my $password    = "sekrit";                             # key password (maybe make this interactive)
-
-######## END USER CONFIGURATION ########
+my %config = ParseConfig("$Bin/client.conf");
 
 # other variables, probably shouldn't touch these
 my $state;
@@ -42,6 +28,7 @@ if (($#ARGV + 1) < 3) {
 
 $state->{repo}    = $ARGV[0];
 $state->{pkgbase} = $ARGV[1];
+$state->{arch}    = $config{primary};
 
 foreach my $n (2 .. $#ARGV) {
     my $filename = $ARGV[$n];
@@ -70,13 +57,13 @@ $h->destroy;
 # connect to service
 sub con {
     $h = new AnyEvent::Handle
-        connect             => [$server => $port],
+        connect             => [$config{server} => $config{port}],
         tls                 => "connect",
         tls_ctx             => {
                                 verify          => 1,
-                                ca_file         => $ca_file,
-                                cert_file       => $cert_file,
-                                cert_password   => $password,
+                                ca_file         => $config{ca_file},
+                                cert_file       => $config{cert_file_manual},
+                                cert_password   => $config{password},
                                 verify_cb       => sub { cb_verify_cb(@_); }
                                 },
         keepalive           => 1,
@@ -165,6 +152,7 @@ sub cb_read {
             my $filename = $current_filename;
             $filename =~ s/^\/.*\///;
             my %reply = ( command   => "open",
+                          arch      => $config{primary},
                           type      => "pkg",
                           filename  => $filename);
             $handle->push_write(json => \%reply);
@@ -216,6 +204,7 @@ sub cb_add {
         
         # construct message for server
         my %reply = ( command   => "add",
+                      arch      => $config{primary},
                       pkgbase   => $state->{pkgbase},
                       pkgname   => $pkgname,
                       pkgver    => $pkgver,
