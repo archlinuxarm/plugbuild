@@ -37,6 +37,8 @@ sub Run {
     $self->{condvar} = AnyEvent->condvar;
     $self->{clients} = \%clients;
     $self->{clientsref} = \%clientsref;
+    $self->{armv5} = 'stop';
+    $self->{armv7} = 'stop';
     
     if ($available->down_nb()) {
         # start-up
@@ -459,11 +461,11 @@ sub cb_queue {
             case ["start","stop"] {
                 my $what = @{$msg}[2];
                 if ($what eq '5' || $what eq '7') {
-                    $self->{"armv$what"} = '$order';
+                    $self->{"armv$what"} = $order;
                     $self->push_builder($order, "armv$what");
                 } elsif ($what eq 'all') {
-                    $self->{'armv5'} = '$order';
-                    $self->{'armv7'} = '$order';
+                    $self->{armv5} = $order;
+                    $self->{armv7} = $order;
                     $self->push_builder($order);
                 }
             }
