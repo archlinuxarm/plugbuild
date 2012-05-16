@@ -259,7 +259,7 @@ sub ready {
 sub ready_detail{
     my $self = shift;
     my $arch = shift||5;
-    
+    $arch = (is_numeric($arch))?$arch:5;
     $arch = 'armv'.$arch;
     if( defined($self->{dbh}) ){
         my $sql = "select
