@@ -45,7 +45,12 @@ sub Run {
             
             # database orders
             case "mirrors" {
-                $self->{mirrors} = @{$msg}[2];
+                my @mirrors;
+                foreach my $row (@{@{$msg}[2]}) {
+                    my ($mirror) = @$row;
+                    push @mirrors, $mirror;
+                }
+                $self->{mirrors} = \@mirrors;
             }
             
             # service orders
