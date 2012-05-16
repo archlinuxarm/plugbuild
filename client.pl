@@ -29,7 +29,7 @@ my $current_filename;
 my $current_fh;
 
 # cache setup
-`rm -rf $cacheroot`;
+#`rm -rf $cacheroot`;
 foreach my $arch (ref($config{available}) eq 'ARRAY' ? @{$config{available}} : $config{available}) {
     `mkdir -p $cacheroot/$arch`;
 }
