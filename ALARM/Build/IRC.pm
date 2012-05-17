@@ -89,6 +89,8 @@ sub irc_priv_print {
     $q_svc->enqueue(['irc', 'admin', { command => 'update', type => 'console', console => $msg }]);
 }
 
+
+
 # callback for socket connection - sleep and reconnect on error
 sub cb_connect {
     my ($self, $con, $error) = @_;
@@ -119,6 +121,7 @@ sub cb_disconnect {
 sub cb_registered {
     my ($self, $con) = @_;
     $con->send_msg(JOIN => '#'.$self->{channel});
+    $con->send_msg(JOIN => '#'.$self->{pubchan}) if defined $self->{pubchan};
 }
 
 # callback for public (channel) messages
@@ -242,8 +245,10 @@ sub cb_publicmsg {
         }
     
     # public channel commands
-    } elsif ($params[0] && $params[0] eq '#'.$self->{pubchan} && $params[1] && $params[1] =~ /^\!.*/) {
+    } elsif ($params[0] && ((defined $self->{pubchan} && $params[0] eq '#'.$self->{pubchan}) || $params[0] eq '#'.$self->{channel}) && $params[1] && $params[1] =~ /^\!.*/) {
         my ($trigger, $arg) = split(/ /, $params[1], 2);
+        my $channel = $params[0];
+        
         switch ($trigger) {
             case "!Ss" { # search packages
                 print "!Ss\n";
