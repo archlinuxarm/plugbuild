@@ -130,6 +130,7 @@ sub cb_publicmsg {
     my $command = $msg{command} || "";
     my @params = @{$msg{params}};
     
+    # private channel commands
     if ($params[0] && $params[0] eq '#'.$self->{channel} && $params[1] && $params[1] =~ /^\!.*/) {
         my ($trigger, $arg) = split(/ /, $params[1], 2);
         switch ($trigger) {
@@ -229,6 +230,18 @@ sub cb_publicmsg {
             }
             case "!update" {
                 $q_db->enqueue(['irc','update']);
+            }
+        }
+    
+    # public channel commands
+    } elsif ($params[0] && $params[0] eq '#'.$self->{pubchan} && $params[1] && $params[1] =~ /^\!.*/) {
+        my ($trigger, $arg) = split(/ /, $params[1], 2);
+        switch ($trigger) {
+            case "!Ss" { # search packages
+                print "!Ss\n";
+            }
+            case "!Si" { # package information
+                print "!Si\n";
             }
         }
     }
