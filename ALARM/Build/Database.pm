@@ -548,14 +548,14 @@ sub pkg_search {
     my ($self, $search) = @_;
     my $return;
     
-    my $rows = $self->{dbh}->selectrow_arrayref("select pkgname from files where del = 0 and search like '%?%' group by pkgname limit 10", undef, $search);
+    my $rows = $self->{dbh}->selectall_arrayref("select pkgname from files where del = 0 and search like '%?%' group by pkgname limit 10", undef, $search);
     foreach my $row (@$rows) {
         my ($pkgname) = @$row;
         $return .= "$pkgname, ";
     }
-    $return =~ s/, $/\)/;
     
     if ($return) {
+        $return =~ s/, $/\)/;
         $q_irc->enqueue(['db', 'print', "Matching packages: $return", 1]);
     } else {
         $q_irc->enqueue(['db', 'print', "No packages found.", 1]);
