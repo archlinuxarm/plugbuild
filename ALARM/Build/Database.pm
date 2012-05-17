@@ -93,6 +93,13 @@ sub Run{
                 my ($done,$count) = ($self->failed(),$self->count('abs'));
                 $q_irc->enqueue(['db','print',"Failed builds: ARMv5: $done->[0] of $count, ".sprintf("%0.2f%%",($done->[0]/$count)*100)." | ARMv7: $done->[1] of $count, ".sprintf("%0.2f%%",($done->[1]/$count)*100)]);
             }
+            case "prune" {
+                my $pkg = @{$orders}[2];
+                $self->{dbh}->do("update armv5 as a inner join abs on (a.id = abs.id) set done = 0, fail = 0 where package = ?", undef, $pkg);
+                $self->{dbh}->do("update armv7 as a inner join abs on (a.id = abs.id) set done = 0, fail = 0 where package = ?", undef, $pkg);
+                $self->pkg_prep('armv5', { pkgbase => $pkg });
+                $self->pkg_prep('armv7', { pkgbase => $pkg });
+            }
             case "ready" {
                 if (defined @{$orders}[2]) {
                     my $target = @{$orders}[2];
@@ -526,8 +533,12 @@ sub pkg_skip {
         $q_irc->enqueue(['db','print',"Couldn't modify $pkg, check the name."]);
     } else {
         $q_irc->enqueue(['db','print',sprintf("%s %s", $op?"Skipped":"Unskipped", $pkg)]);
+        if ($op) {
+            $self->pkg_prep('armv5', { pkgbase => $pkg });
+            $self->pkg_prep('armv7', { pkgbase => $pkg });
+        }
     }
-}		
+}
 
 sub update {
     my $self = shift;

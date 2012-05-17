@@ -166,6 +166,14 @@ sub cb_publicmsg {
                     $q_db->enqueue(['irc', 'mirror', $arg, $address]);
                 }
             }
+            case "!prune" {
+                my ($pkg) = split(/ /, $arg, 2);
+                if (!$pkg) {
+                    $self->irc_priv_print("usage: !prune <package>");
+                } else {
+                    $q_db->enqueue(['irc', 'prune', $pkg]);
+                }
+            }
             case "!ready" {
                 $q_db->enqueue(['irc','ready',$arg]);
             }
