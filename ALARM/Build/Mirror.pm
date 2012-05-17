@@ -54,6 +54,19 @@ sub Run {
             }
             
             # service orders
+            case "push" {
+                my ($address, $cn) = @{$msg}[2,3];
+                print "Mirror: pushing to $address\n";
+                foreach my $arch ('armv5', 'armv7') {
+                    system("rsync -rlt --delete $self->{repo}->{$arch} $address");
+                    if ($? >> 8) {
+                        print "Mirror: failed to push $arch to $address: $!\n";
+                    } else {
+                        print "Mirror: successfully pushed $arch to $address\n";
+                    }
+                }
+                $q_svc->enqueue(['mir', 'sync', $cn]) if defined $cn;
+            }
             case "update" {
                 my $arch = @{$msg}[2];
                 $self->update($arch);

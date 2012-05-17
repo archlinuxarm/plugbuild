@@ -411,11 +411,13 @@ sub pkg_add {
     
     # move file, repo-add it
     print "   -> adding $arch/$repo/$pkgname ($filename)..\n";
+    $q_svc->enqueue(['db', 'farm', 'insert', $arch, $repo, $filename]);
     system("mv -f $self->{packaging}->{in_pkg}/$arch/$filename $self->{packaging}->{repo}->{$arch}/$repo");
     if ($? >> 8) {
         print "    -> move failed\n";
         return 1;
     }
+    $q_svc->enqueue(['db', 'farm', 'add', $arch, $repo, $filename]);
     system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.db.tar.gz $self->{packaging}->{repo}->{$arch}/$repo/$filename");
     if ($? >> 8) {
         print "    -> move failed\n";
@@ -438,9 +440,11 @@ sub pkg_prep {
         my ($repo, $pkgname, $filename) = @$row;
         
         # remove pkgname from repo.db
+        $q_svc->enqueue(['db', 'farm', 'remove', $arch, $repo, $pkgname]);
         system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.db.tar.gz $pkgname");
         
         # remove file
+        $q_svc->enqueue(['db', 'farm', 'delete', $arch, $repo, $filename]);
         system("rm -f $self->{packaging}->{repo}->{$arch}/$repo/$filename");
     }
     
@@ -457,12 +461,15 @@ sub pkg_relocate {
         my ($id, $arch, $oldrepo, $pkgname, $filename) = @$row;
         
         # remove from old repo.db
+        $q_svc->enqueue(['db', 'farm', 'remove', $arch, $oldrepo, $pkgname]);
         system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$oldrepo/$oldrepo.db.tar.gz $pkgname");
         
         # move file
+        $q_svc->enqueue(['db', 'farm', 'move', $arch, [$oldrepo, $newrepo], $filename]);
         system("mv $self->{packaging}->{repo}->{$arch}/$oldrepo/$filename $self->{packaging}->{repo}->{$arch}/$newrepo/$filename");
         
         # add to new repo.db
+        $q_svc->enqueue(['db', 'farm', 'add', $arch, $newrepo, $filename]);
         system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{$arch}/$newrepo/$newrepo.db.tar.gz $self->{packaging}->{repo}->{$arch}/$newrepo/$filename");
         
         # update files table

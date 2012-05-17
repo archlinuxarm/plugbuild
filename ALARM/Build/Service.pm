@@ -206,7 +206,7 @@ sub cb_read {
     # switch on OU (client type)
     switch ($client->{ou}) {
         
-        # builder client - OU = architecture
+        # builder client
         case "builder" {
             switch ($data->{command}) {
                 
@@ -333,6 +333,18 @@ sub cb_read {
             }
         }
         
+        # farmer client
+        case "farmer" {
+            switch ($data->{command}) {
+                # sync farmer - rsync push
+                #  - address    => address to push to
+                case "sync" {
+                    $q_mir->enqueue(['svc', 'push', $data->{address}, $client->{cn}]);
+                    $client->{ready} = 0;
+                }
+            }
+        }
+        
         # admin client (nodejs)
         case "admin" {
             switch ($data->{command}) {
@@ -402,6 +414,24 @@ sub cb_queue {
                 $handle->push_write(json => $data) if defined $handle;
             }
             
+            # repo command for farmer
+            #  - command    - add/insert/remove/delete/move
+            #  - architecture
+            #  - repo
+            #  - arg        - pkgname/filename
+            case "farm" {
+                my ($command, $arch, $repo, $arg) = @{$msg}[2,3,4,5];
+                foreach my $oucn (keys %{$self->{clientsref}}) {
+                    next if (!($oucn =~ m/farmer\/.*/));
+                    my $farmer = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
+                    next unless $farmer->{ready};
+                    $farmer->{handle}->push_write(json => { command => $command, 
+                                                            arch    => $arch,
+                                                            repo    => $repo,
+                                                            arg     => $arg });
+                }
+            }
+            
             # push json out to admin interface
             case "admin" {
                 my ($data) = @{$msg}[2];
@@ -469,6 +499,17 @@ sub cb_queue {
                     $self->{armv7} = $order;
                     $self->push_builder($order);
                 }
+            }
+            
+            ## Mirror orders
+            # rsync push to farmer complete, set ready
+            case "sync" {
+                my ($cn) = @{$msg}[2];
+                my $handle = $self->{clientsref}->{"farmer/$cn"};
+                my $farmer = $self->{clients}->{$handle};
+                
+                $farmer->{ready} = 1;
+                $handle->push_write(json => {command => 'sync'});
             }
         }
         if ($order eq 'quit' || $order eq 'recycle'){
