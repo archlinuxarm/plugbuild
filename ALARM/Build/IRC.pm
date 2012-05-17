@@ -69,6 +69,18 @@ sub connect {
 # send a line to the build channel
 sub irc_priv_print {
     my ($self, $msg) = @_;
+    $self->irc_print($msg, 0);
+}
+
+# send a line to the public channel
+sub irc_pub_print {
+    my ($self, $msg) = @_;
+    $self->irc_print($msg, 1);
+}
+
+# send a message to irc
+sub irc_print {
+    my ($self, $msg, $pub) = @_;
     
     # limit message length to first space after 400 characters
     if (length($msg) > 400) {
@@ -82,11 +94,15 @@ sub irc_priv_print {
             $todo = "... " . substr($msg, $i + 1);
         }
         # enqueue at beginning so followup prints don't smash us
-        $q_irc->insert(0, ['irc', 'print', $todo]);
+        $q_irc->insert(0, ['irc', 'print', $todo, $pub]);
         $msg = substr($msg, 0, $i);
     }
-    $self->{con}->send_msg(PRIVMSG => '#'.$self->{channel}, "$msg");
-    $q_svc->enqueue(['irc', 'admin', { command => 'update', type => 'console', console => $msg }]);
+    if ($pub) {
+        $self->{con}->send_msg(PRIVMSG => '#'.$self->{pubchan}, "$msg");
+    } else {
+        $self->{con}->send_msg(PRIVMSG => '#'.$self->{channel}, "$msg");
+        $q_svc->enqueue(['irc', 'admin', { command => 'update', type => 'console', console => $msg }]);
+    }
 }
 
 
@@ -121,7 +137,7 @@ sub cb_disconnect {
 sub cb_registered {
     my ($self, $con) = @_;
     $con->send_msg(JOIN => '#'.$self->{channel});
-    $con->send_msg(JOIN => '#'.$self->{pubchan}) if defined $self->{pubchan};
+    $con->send_msg(JOIN => '#'.$self->{pubchan});
 }
 
 # callback for public (channel) messages
@@ -245,10 +261,8 @@ sub cb_publicmsg {
         }
     
     # public channel commands
-    } elsif ($params[0] && ((defined $self->{pubchan} && $params[0] eq '#'.$self->{pubchan}) || $params[0] eq '#'.$self->{channel}) && $params[1] && $params[1] =~ /^\!.*/) {
-        my ($trigger, $arg) = split(/ /, $params[1], 2);
-        my $channel = $params[0];
-        
+    } elsif ($params[0] && $params[0] eq '#'.$self->{pubchan} && $params[1] && $params[1] =~ /^\!.*/) {
+        my ($trigger, $arg) = split(/ /, $params[1], 2);        
         switch ($trigger) {
             case "!Ss" { # search packages
                 print "!Ss\n";
@@ -269,8 +283,12 @@ sub cb_queue {
         print "IRC[$from $order]\n";
         switch($order){
             case "print" {
-                my ($data) = @{$msg}[2];
-                $self->irc_priv_print("$data");
+                my ($data, $pub) = @{$msg}[2,3];
+                if ($pub) {
+                    $self->irc_pub_print($data);
+                } else {
+                    $self->irc_priv_print($data);
+                }
             }
             else {
                 $self->irc_priv_print("$order from $from");
