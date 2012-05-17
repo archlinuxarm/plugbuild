@@ -264,8 +264,12 @@ sub cb_publicmsg {
     } elsif ($params[0] && $params[0] eq '#'.$self->{pubchan} && $params[1] && $params[1] =~ /^\!.*/) {
         my ($trigger, $arg) = split(/ /, $params[1], 2);        
         switch ($trigger) {
-            case "!Ss" { # search packages
-                print "!Ss\n";
+            # search packages
+            case "!search" {
+                if ($arg) {
+                    $arg = substr($arg, 0, 20); # limit to 20 characters
+                    $q_db->enqueue(['irc', 'search', $arg]);
+                }
             }
             case "!Si" { # package information
                 print "!Si\n";

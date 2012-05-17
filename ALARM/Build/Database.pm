@@ -127,6 +127,9 @@ sub Run{
                     $q_irc->enqueue(['db','print',"No review available."]);
                 }
             }
+            case "search" {
+                $self->pkg_search(@{$orders}[2]);
+            }
             case "skip" {
                 $self->pkg_skip(@{$orders}[2], 1);
             }
@@ -537,6 +540,25 @@ sub pkg_skip {
             $self->pkg_prep('armv5', { pkgbase => $pkg });
             $self->pkg_prep('armv7', { pkgbase => $pkg });
         }
+    }
+}
+
+# search packages, public print results to irc
+sub pkg_search {
+    my ($self, $search) = @_;
+    my $return;
+    
+    my $rows = $self->{dbh}->selectrow_arrayref("select pkgname from files where del = 0 and search like '%?%' group by pkgname limit 10", undef, $search);
+    foreach my $row (@$rows) {
+        my ($pkgname) = @$row;
+        $return .= "$pkgname, ";
+    }
+    $return =~ s/, $/\)/;
+    
+    if ($return) {
+        $q_irc->enqueue(['db', 'print', "Matching packages: $return", 1]);
+    } else {
+        $q_irc->enqueue(['db', 'print', "No packages found.", 1]);
     }
 }
 
