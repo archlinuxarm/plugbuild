@@ -84,10 +84,10 @@ sub update {
     foreach my $mirror (@{$self->{mirrors}}) {
         system("rsync -rlt --delete $self->{repo}->{$arch} $mirror");
         if ($? >> 8) {
-            $q_irc->enqueue(['svc','print',"[mirror] failed to mirror to $mirror: $!"]);
+            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $mirror: $!"]);
         }
     }
-    $q_irc->enqueue(['svc','print',"[mirror] finished mirroring $arch"]);
+    $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring $arch"]);
 }
 
 1;
