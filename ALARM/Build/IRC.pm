@@ -271,8 +271,12 @@ sub cb_publicmsg {
                     $q_db->enqueue(['irc', 'search', $arg]);
                 }
             }
-            case "!Si" { # package information
-                print "!Si\n";
+            case "!info" { # package information
+                if ($arg) {
+                    ($arg) = split(/ /, $arg, 2);
+                    $arg = substr($arg, 0, 20); # limit to 20 characters
+                    $q_db->enqueue(['irc', 'info', $arg]);
+                }
             }
         }
     }

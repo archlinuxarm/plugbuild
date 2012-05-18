@@ -62,6 +62,9 @@ sub Run{
                 my $count = $self->count($table);
                 $q_irc->enqueue(['db','print',"$table has $count"]);
             }
+            case "info" {
+                $self->pkg_info(@{$orders}[2]);
+            }
             case "mirror" {
                 my ($command, $address) = @{$orders}[2,3];
                 if ($command eq 'list') {
@@ -560,6 +563,25 @@ sub pkg_search {
         $q_irc->enqueue(['db', 'print', "Matching packages: $return", 1]);
     } else {
         $q_irc->enqueue(['db', 'print', "No packages found.", 1]);
+    }
+}
+
+# package info, public print to irc
+sub pkg_info {
+    my ($self, $pkg) = @_;
+    my $return;
+    
+    my $rows = $self->{dbh}->selectall_arrayref("select group_concat(arch), repo, pkgbase, pkgname, pkgver, pkgrel, pkgdesc from files where pkgname = ? and del = 0 group by pkgname", undef, $pkg);
+    if (!@{$rows}[0]) {
+        $q_irc->enqueue(['db', 'print', "No package named $pkg.", 1]);
+        return;
+    } else {
+        my ($arch, $repo, $pkgbase, $pkgname, $pkgver, $pkgrel, $pkgdesc) = @{@{$rows}[0]};
+        $arch =~ s/,/, /g;
+        $return = "$repo/$pkgbase ";
+        $return .= "(split from $pkgbase) " if $pkgbase ne $pkgname;
+        $return .= "$pkgver-$pkgrel, available for $arch: $pkgdesc";
+        $q_irc->enqueue(['db', 'print', $return, 1]);
     }
 }
 
