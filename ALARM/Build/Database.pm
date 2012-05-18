@@ -578,7 +578,7 @@ sub pkg_info {
     } else {
         my ($arch, $repo, $pkgbase, $pkgname, $pkgver, $pkgrel, $pkgdesc) = @{@{$rows}[0]};
         $arch =~ s/,/, /g;
-        $return = "$repo/$pkgbase ";
+        $return = "$repo/$pkgname ";
         $return .= "(split from $pkgbase) " if $pkgbase ne $pkgname;
         $return .= "$pkgver-$pkgrel, available for $arch: $pkgdesc";
         $q_irc->enqueue(['db', 'print', $return, 1]);
