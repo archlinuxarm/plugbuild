@@ -167,7 +167,7 @@ sub geoip_refresh {
     }
     
     # merge into GeoIP table
-    $self->{dbh}->do("lock tables geoip write");
+    $self->{dbh}->do("lock tables geoip write, geoip_tmp write");
     $self->{dbh}->do("delete from geoip");
     $self->{dbh}->do("insert into geoip select * from geoip_tmp");
     $self->{dbh}->do("unlock tables");
