@@ -117,17 +117,9 @@ sub IRC{
 
 sub Mirror{
     my $self = shift;
-    return new ALARM::Build::Factory('Mirror',$self->{config}->{server}->{database}->{packaging},$q_svc,$q_db,$q_irc);
+    return new ALARM::Build::Factory('Mirror',$self->{config}->{server}->{database},$q_svc,$q_db,$q_irc);
 }
 
 
 # MUST EXIT 1
 1;
-
-__END__
-http://pastie.org/1436459
-A
-| \
-B  C
-|   \
-C    D
