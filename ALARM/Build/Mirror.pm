@@ -39,10 +39,7 @@ sub Run {
         return -1;
     }
     
-    # get mirror list
-    $q_db->enqueue(['mir', 'mirrors']);
-    
-    while(my $msg = $q_mir->dequeue ){
+    while (my $msg = $q_mir->dequeue) {
         my ($from,$order) = @{$msg};
         print "Mirror: got $order from $from\n";
         switch ($order) {
@@ -54,14 +51,14 @@ sub Run {
                 last;
             }
             
-            # database orders
-            case "mirrors" {
-                my @mirrors;
-                foreach my $row (@{@{$msg}[2]}) {
-                    my ($mirror) = @$row;
-                    push @mirrors, $mirror;
+            # IRC orders
+            case "list" {
+                $q_irc->enqueue(['db', 'print', "Mirror list:"]);
+                my $rows = $self->{dbh}->selectall_arrayref("select address, domain, active, tier from mirrors where tier > 0");
+                foreach my $row (@$rows) {
+                    my ($address, domain, active, tier) = @$row;
+                    $q_irc->enqueue(['db', 'print', sprintf(" - %s (%s), Tier %s, %s", $domain, $address, $tier, $active?"not active":"active")]);
                 }
-                $self->{mirrors} = \@mirrors;
             }
             
             # service orders
@@ -84,23 +81,33 @@ sub Run {
             }
         }
     }
-
+    
+    $db->disconnect;
+    
     print "Mirror End\n";
     return -1;
 }
 
+# update mirrors for a given architecture
 sub update {
     my ($self, $arch) = @_;
     print "Mirror: updating $arch\n";
-    foreach my $mirror (@{$self->{mirrors}}) {
+    
+    # only push to Tier 1 mirrors
+    my $rows = $self->{dbh}->selectall_arrayref("select id, address from mirrors where tier = 1");
+    foreach my $row (@$rows) {
+        my ($id, $mirror) = @$row;
         system("rsync -rlt --delete $self->{repo}->{$arch} $mirror");
         if ($? >> 8) {
-            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $mirror: $!"]);
+            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $mirror"]);
+            $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
         }
+        $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
     }
     $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring $arch"]);
 }
 
+# refresh the GeoIP database
 sub geoip_refresh {
     my $self = shift;
     
@@ -141,14 +148,13 @@ sub geoip_refresh {
     my $csv = Text::CSV->new();
     open(CSV, "<", "$Bin/GeoIPCountryWhois.csv") or return;
     
-    # update GeoIP table
-    $self->{dbh}->do("lock tables geoip write");
-    $self->{dbh}->do("delete from geoip");
+    # update temporary GeoIP table
+    $self->{dbh}->do("delete from geoip_tmp");
     while (<CSV>) {
         next if ($. == 1);
         if ($csv->parse($_)) {
             my @cols = $csv->fields();
-            $self->{dbh}->do("insert into geoip values (?, ?, ?)", undef, $cols[2], $cols[3], $continent_map{$cols[4]} || 1);
+            $self->{dbh}->do("insert into geoip_tmp values (?, ?, ?)", undef, $cols[2], $cols[3], $continent_map{$cols[4]} || 1);
             $q_irc->enqueue(['mir', 'print', "[mirror] couldn't map country code $cols[4]"]) if (!$continent_map{$cols[4]});
         } else {
             my $err = $csv->error_input;
@@ -156,8 +162,14 @@ sub geoip_refresh {
         }
     }
     
-    # clean up
+    # merge into GeoIP table
+    $self->{dbh}->do("lock tables geoip write");
+    $self->{dbh}->do("delete from geoip");
+    $self->{dbh}->do("insert into geoip select * from geoip_tmp");
     $self->{dbh}->do("unlock tables");
+    
+    # clean up
+    $self->{dbh}->do("delete from geoip_tmp");
     `rm -f $Bin/GeoIPCountryCSV.zip $Bin/GeoIPCountryWhois.csv`;
     close CSV;
     $q_irc->enqueue(['mir', 'print', "[mirror] GeoIP table has been updated"]);

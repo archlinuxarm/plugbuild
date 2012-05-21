@@ -175,15 +175,8 @@ sub cb_publicmsg {
 			case "!list" {
 				$q_svc->enqueue(['irc', 'list']);
 			}
-            case "!mirror" {
-                my ($command, $address) = split(/ /, $arg, 3);
-                if (!$arg) {
-                    $self->irc_priv_print("usage: !mirror <list|add|remove> [address]");
-                } elsif ($arg eq 'list') {
-                    $q_db->enqueue(['irc', 'mirror', 'list']);
-                } elsif (defined $address && ($arg eq 'add' || $arg eq 'remove')) {
-                    $q_db->enqueue(['irc', 'mirror', $arg, $address]);
-                }
+            case "!mirrors" {
+                $q_mir->enqueue(['irc', 'list']);
             }
             case "!prune" {
                 my ($pkg) = split(/ /, $arg, 2);
