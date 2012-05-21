@@ -198,6 +198,9 @@ sub cb_publicmsg {
                     $self->irc_priv_print("usage: !recycle <irc|database|service|all>");
                 }
             }
+            case "!refresh" {
+                $q_mir->enqueue(['irc', 'refresh']);
+            }
             case "!review" {
                 $q_db->enqueue(['irc','review']);
             }

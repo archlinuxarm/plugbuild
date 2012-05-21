@@ -60,13 +60,16 @@ sub Run {
                     $q_irc->enqueue(['db', 'print', sprintf(" - %s (%s), Tier %s, %s", $domain, $address, $tier, $active?"active":"not active")]);
                 }
             }
+            case "refresh" {
+                $self->geoip_refresh();
+            }
             
             # service orders
             case "push" {
                 my ($address, $cn) = @{$msg}[2,3];
                 print "Mirror: pushing to $address\n";
                 foreach my $arch ('armv5', 'armv7') {
-                    system("rsync -rlt --delete $self->{repo}->{$arch} $address");
+                    `rsync -rlt --delete $self->{repo}->{$arch} $address`;
                     if ($? >> 8) {
                         print "Mirror: failed to push $arch to $address: $!\n";
                     } else {
@@ -97,10 +100,11 @@ sub update {
     my $rows = $self->{dbh}->selectall_arrayref("select id, address from mirrors where tier = 1");
     foreach my $row (@$rows) {
         my ($id, $mirror) = @$row;
-        system("rsync -rlt --delete $self->{repo}->{$arch} $mirror");
+        `rsync -rlt --delete $self->{repo}->{$arch} $mirror`;
         if ($? >> 8) {
             $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $mirror"]);
             $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
+            next;
         }
         $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
     }
