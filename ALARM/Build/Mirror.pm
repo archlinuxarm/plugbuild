@@ -56,7 +56,7 @@ sub Run {
                 $q_irc->enqueue(['db', 'print', "Mirror list:"]);
                 my $rows = $self->{dbh}->selectall_arrayref("select address, domain, active, tier from mirrors where tier > 0");
                 foreach my $row (@$rows) {
-                    my ($address, domain, active, tier) = @$row;
+                    my ($address, $domain, $active, $tier) = @$row;
                     $q_irc->enqueue(['db', 'print', sprintf(" - %s (%s), Tier %s, %s", $domain, $address, $tier, $active?"not active":"active")]);
                 }
             }
