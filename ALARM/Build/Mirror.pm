@@ -57,7 +57,7 @@ sub Run {
                 my $rows = $self->{dbh}->selectall_arrayref("select address, domain, active, tier from mirrors where tier > 0");
                 foreach my $row (@$rows) {
                     my ($address, $domain, $active, $tier) = @$row;
-                    $q_irc->enqueue(['db', 'print', sprintf(" - %s (%s), Tier %s, %s", $domain, $address, $tier, $active?"active":"not active")]);
+                    $q_irc->enqueue(['db', 'print', sprintf(" - %s (%s), Tier %s, %s", $domain, $address?$address:"", $tier, $active?"active":"not active")]);
                 }
             }
             case "refresh" {
@@ -94,7 +94,13 @@ sub Run {
 # update mirrors for a given architecture
 sub update {
     my ($self, $arch) = @_;
+    my $sync = time();
     print "Mirror: updating $arch\n";
+    
+    # update sync file
+    open (MYFILE, '>', "$self->{packaging}->{repo}->{$arch}/sync");
+    print MYFILE "$sync";
+    close (MYFILE); 
     
     # only push to Tier 1 mirrors
     my $rows = $self->{dbh}->selectall_arrayref("select id, address from mirrors where tier = 1");
@@ -109,6 +115,31 @@ sub update {
         $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
     }
     $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring $arch"]);
+    
+    # set timer to check Tier 2 mirrors after 5 minutes
+    #undef $self->{$arch};
+    #$self->{$arch} = AnyEvent->timer(after => 300, cb => sub { $self->tier2($arch, $sync); });
+}
+
+# check Tier 2 mirrors for synchronization
+sub tier2 {
+    my ($self, $arch, $sync) = @_;
+    $arch = "arm" if $arch eq "armv5";
+    $arch = "armv7h" if $arch eq "armv7";
+    
+    my $rows = $self->{dbh}->selectall_arrayref("select id, domain from mirrors where tier = 2");
+    foreach my $row (@$rows) {
+        my ($id, $domain) = @$row;
+        my $remote = `wget -O - $domain/$arch/sync 2>/dev/null`;
+        chomp $remote;
+        if ($remote ne $sync) {
+            $q_irc->enqueue(['mir', 'print', "[mirror] Tier 2 check failed on $domain"]);
+            $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
+            next;
+        }
+        $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
+    }
+    $q_irc->enqueue(['mir', 'print', "[mirror] Tier 2 check complete for $arch"]);
 }
 
 # refresh the GeoIP database
