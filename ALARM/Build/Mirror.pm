@@ -54,10 +54,10 @@ sub Run {
             # IRC orders
             case "list" {
                 $q_irc->enqueue(['db', 'print', "Mirror list:"]);
-                my $rows = $self->{dbh}->selectall_arrayref("select address, domain, active, tier from mirrors where tier > 0");
+                my $rows = $self->{dbh}->selectall_arrayref("select domain, active, tier from mirrors where tier > 0 order by tier");
                 foreach my $row (@$rows) {
-                    my ($address, $domain, $active, $tier) = @$row;
-                    $q_irc->enqueue(['db', 'print', sprintf(" - %s (%s), Tier %s, %s", $domain, $address?$address:"", $tier, $active?"active":"not active")]);
+                    my ($domain, $active, $tier) = @$row;
+                    $q_irc->enqueue(['db', 'print', sprintf(" - T%s [%s] %s", $tier, $active?" active ":"inactive", $domain)]);
                 }
             }
             case "refresh" {
