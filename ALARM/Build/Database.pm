@@ -237,7 +237,7 @@ sub get_next_package {
     my ($self, $arch, $builder) = @_;
     if (defined($self->{dbh})) {
     	$self->{dbh}->do("update ? set builder = null where builder = ?", undef, $arch, $builder);
-        my @next_pkg = $db->selectrow_array("select
+        my @next_pkg = $self->{dbh}->selectrow_array("select
             p.repo, p.package, p.depends, p.makedepends
             from abs as p
             join ? as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
@@ -311,9 +311,6 @@ sub ready_detail {
 	}
     $res =~ s/, $//;
 	return [$cnt,$res];
-    } else {
-        return undef;
-    }
 }
 
 sub count {
@@ -613,6 +610,14 @@ sub update {
             # skip a bad source
             next unless (defined $pkgver);
             
+            # set/reset plugrel
+            my $plugrel;
+            if (defined $db_plugrel && "$pkgver-$pkgrel" eq "$db_pkgver-$db_pkgrel") {
+                $plugrel = $db_plugrel;
+            } else {
+                $plugrel = 0;
+            }
+            
             # set importance
             my $importance = $priority{$repo};
             
@@ -631,7 +636,7 @@ sub update {
             `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
             
             # new package, different plugrel or version, done = 0
-            next unless (! defined $db_pkgver || "$plugrel" ne "$db_plugrel" || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
+            next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
             
             # if new, add to list
             $newlist{$pkg} = 1 if (! defined $db_pkgver);
