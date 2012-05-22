@@ -258,20 +258,22 @@ sub cb_publicmsg {
     
     # public channel commands
     } elsif ($params[0] && $params[0] eq '#'.$self->{pubchan} && $params[1] && $params[1] =~ /^\!.*/) {
-        my ($trigger, $arg) = split(/ /, $params[1], 2);        
+        my ($trigger, $arg) = split(/ /, $params[1], 2);
         switch ($trigger) {
-            # search packages
-            case "!search" {
-                if ($arg) {
-                    $arg = substr($arg, 0, 20); # limit to 20 characters
-                    $q_db->enqueue(['irc', 'search', $arg]);
-                }
+            case "!done" {
+                $q_db->enqueue(['irc', 'done_pub']);
             }
-            case "!info" { # package information
+            case "!info" {      # package information
                 if ($arg) {
                     ($arg) = split(/ /, $arg, 2);
                     $arg = substr($arg, 0, 20); # limit to 20 characters
                     $q_db->enqueue(['irc', 'info', $arg]);
+                }
+            }
+            case "!search" {    # search packages
+                if ($arg) {
+                    $arg = substr($arg, 0, 20); # limit to 20 characters
+                    $q_db->enqueue(['irc', 'search', $arg]);
                 }
             }
         }

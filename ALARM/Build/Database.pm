@@ -62,6 +62,16 @@ sub Run{
                 my $count = $self->count($table);
                 $q_irc->enqueue(['db','print',"$table has $count"]);
             }
+            case "done_pub" {
+                my $rows = $self->{dbh}->selectall_arrayref("select arch, count(*) from files where del = 0 group by arch order by arch");
+                my $result = "Available packages: ";
+                foreach my $row (@$rows) {
+                    my ($arch, $count) = @$row;
+                    $result .= "$count for $arch, ";
+                }
+                $result =~ s/, $//;
+                $q_irc->enqueue(['db', 'print', $result]);
+            }
             case "info" {
                 $self->pkg_info(@{$orders}[2]);
             }
