@@ -579,7 +579,8 @@ sub update {
     my %priority = ( 'core'         => 10,   # default importance (package selection priority)
                      'extra'        => 20,
                      'community'    => 30,
-                     'aur'          => 40 );
+                     'aur'          => 40,
+                     'alarm'        => 50 );
     
     $q_irc->enqueue(['db', 'print', 'Updating git..']);
     print "update git..\n";
