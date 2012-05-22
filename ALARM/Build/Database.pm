@@ -70,7 +70,7 @@ sub Run{
                     $result .= "$count for $arch, ";
                 }
                 $result =~ s/, $//;
-                $q_irc->enqueue(['db', 'print', $result]);
+                $q_irc->enqueue(['db', 'print', $result, 1]);
             }
             case "info" {
                 $self->pkg_info(@{$orders}[2]);
