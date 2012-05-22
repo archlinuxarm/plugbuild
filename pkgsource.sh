@@ -12,14 +12,16 @@ eval $(awk '/^[[:space:]]*provides=/,/\)/' "${1}/${2}/${3}/PKGBUILD" | \
 # build output reply to build server
 string="${pkgname[*]}|${provides_list[*]}|${pkgver}|${pkgrel}|${depends[*]}|${makedepends[*]}"
 
-# attach our plugrel and noautobuild declarations, if present
-if [[ ${plugrel} ]]; then
-    string="$string|${plugrel}"
-    if [[ ${noautobuild} ]]; then
-        string="$string|${noautobuild}"
-    else
-        string="$string|0"
-    fi
+# attach our buildarch and noautobuild declarations, if present
+if [[ ${buildarch} ]]; then
+    string="$string|${buildarch}"
+else
+    string="$string|1"
+fi
+if [[ ${noautobuild} ]]; then
+    string="$string|${noautobuild}"
+else
+    string="$string|0"
 fi
 
 # return

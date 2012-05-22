@@ -33,9 +33,19 @@ sub Run{
     my $self = shift;
     my $requests = -1;
     print "DbRun\n";
+    
     my $open = $self->connect;
-    ##
-    while(my $orders = $q_db->dequeue ){
+    
+    # skip bitmasks
+    #  - 0000 = skip package, do not build
+    #  - 0001 = build all architectures
+    #  - 0010 = build for armv5 only
+    #  - 0100 = build for armv7 only
+    $self->{skip}->{armv5} = 3;     # 0b0011
+    $self->{skip}->{armv7} = 5;     # 0b0101
+    
+    # thread queue loop
+    while (my $orders = $q_db->dequeue) {
         my ($from,$order) = @{$orders};
         print "DB: got $order from $from\n";
         if($order eq "quit"){
@@ -77,13 +87,13 @@ sub Run{
             }
             case "percent_done" {
                 my $table = @{$orders}[2];
-                my ($done,$count) = ($self->done(),$self->count('abs'));
-                $q_irc->enqueue(['db','print',"Successful builds: ARMv5: $done->[0] of $count, ".sprintf("%0.2f%%",($done->[0]/$count)*100)." | ARMv7: $done->[1] of $count, ".sprintf("%0.2f%%",($done->[1]/$count)*100)]);
+                my ($v5, $v7, $count) = $self->done();
+                $q_irc->enqueue(['db','print',"Successful builds: ARMv5: $v5 of $count, ".sprintf("%0.2f%%",($v5/$count)*100)." | ARMv7: $v7 of $count, ".sprintf("%0.2f%%",($v7/$count)*100)]);
             }
             case "percent_failed" {
                 my $table = @{$orders}[2];
-                my ($done,$count) = ($self->failed(),$self->count('abs'));
-                $q_irc->enqueue(['db','print',"Failed builds: ARMv5: $done->[0] of $count, ".sprintf("%0.2f%%",($done->[0]/$count)*100)." | ARMv7: $done->[1] of $count, ".sprintf("%0.2f%%",($done->[1]/$count)*100)]);
+                my ($v5, $v7, $count) = $self->failed();
+                $q_irc->enqueue(['db','print',"Failed builds: ARMv5: $v5 of $count, ".sprintf("%0.2f%%",($v5/$count)*100)." | ARMv7: $v7 of $count, ".sprintf("%0.2f%%",($v7/$count)*100)]);
             }
             case "prune" {
                 my $pkg = @{$orders}[2];
@@ -123,7 +133,7 @@ sub Run{
                 $self->pkg_search(@{$orders}[2]);
             }
             case "skip" {
-                $self->pkg_skip(@{$orders}[2], 1);
+                $self->pkg_skip(@{$orders}[2], 0);
             }
             case "status" {
                 my ($arch, $package) = split(/ /, @{$orders}[2], 2);
@@ -134,7 +144,7 @@ sub Run{
                 $self->pkg_unfail($arch, $package);
             }
             case "unskip" {
-                $self->pkg_skip(@{$orders}[2], 0);
+                $self->pkg_skip(@{$orders}[2], 1);
             }
             case "update" {
             	$self->update();
@@ -160,7 +170,7 @@ sub Run{
                 my $rows = shared_clone($self->{dbh}->selectall_hashref(
                     "select package, repo, armv5.done as v5_done, armv5.fail as v5_fail, armv7.done as v7_done, armv7.fail as v7_fail
                      from abs inner join armv5 on (abs.id = armv5.id) inner join armv7 on (abs.id = armv7.id)
-                     where del = 0 and skip = 0", "package"));
+                     where del = 0 and skip != 0", "package"));
                 $data->{dump} = $rows;
                 $q_svc->enqueue(['db', 'admin', $data]);
             }
@@ -226,18 +236,16 @@ sub disconnect {
 sub get_next_package {
     my ($self, $arch, $builder) = @_;
     if (defined($self->{dbh})) {
-    	$self->{dbh}->do("update $arch set builder = null where builder = '$builder'");
-        my $sql = "select
-p.repo, p.package, p.depends, p.makedepends
-from
-abs as p
-join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
-where p.skip = 0 and p.del = 0
-group by p.id
-having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1";
-        my $db = $self->{dbh};
-        my @next_pkg = $db->selectrow_array($sql);
+    	$self->{dbh}->do("update ? set builder = null where builder = ?", undef, $arch, $builder);
+        my @next_pkg = $db->selectrow_array("select
+            p.repo, p.package, p.depends, p.makedepends
+            from abs as p
+            join ? as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join ? as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+            where p.skip & ? > 0 and p.del = 0
+            group by p.id
+            having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1",
+            undef, $arch, $arch, $self->{skip}->{$arch});
         return undef if (!$next_pkg[0]);
         return \@next_pkg;
     } else {
@@ -249,30 +257,28 @@ sub ready {
     my $self = shift;
     
     if (defined($self->{dbh})) {
-        my $v5sql = "select count(*) from (
+        my @next_pkg5 = $self->{dbh}->selectrow_array("select count(*) from (
             select
                 p.repo, p.package, p.depends, p.makedepends
                 from
                 abs as p
                     join armv5 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
                     left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv5 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
-                where p.skip = 0 and p.del = 0  
+                where p.skip & ? > 0 and p.del = 0  
                 group by p.id
                 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
-            ) as xx";
-        my $v7sql = "select count(*) from (
+            ) as xx", undef, $self->{skip}->{armv5});
+        my @next_pkg7 = $self->{dbh}->selectrow_array("select count(*) from (
             select
                 p.repo, p.package, p.depends, p.makedepends
                 from
                 abs as p
                     join armv7 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
                     left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv7 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
-                where p.skip = 0 and p.del = 0  
+                where p.skip & ? > 0 and p.del = 0  
                 group by p.id
                 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
-            ) as xx";
-        my @next_pkg5 = $self->{dbh}->selectrow_array($v5sql);
-        my @next_pkg7 = $self->{dbh}->selectrow_array($v7sql);
+            ) as xx", undef, $self->{skip}->{armv7});
         return undef if (!defined($next_pkg5[0]) && !defined($next_pkg7[0]));
         return [$next_pkg5[0], $next_pkg7[0]];
     } else {
@@ -280,36 +286,37 @@ sub ready {
     }
 }
 
-sub ready_detail{
+sub ready_detail {
     my $self = shift;
     my $arch = shift||5;
+    
     $arch = (Scalar::Util::looks_like_number($arch))?$arch:5;
     $arch = 'armv'.$arch;
-    if( defined($self->{dbh}) ){
-        my $sql = "select
-p.repo, p.package, p.depends, p.makedepends
-from
-abs as p
-join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
-where p.skip = 0 and p.del = 0
-group by p.id
-having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance";
-        my $sth = $self->{dbh}->prepare($sql);
-        $sth->execute();
-	my $res=undef;
-	my $cnt=0;
-	while( my $row = $sth->fetchrow_arrayref() ){
-	    $res.=sprintf(" %s-%s,",$row->[0],$row->[1]);
+    my $rows = $self->{dbh}->selectall_arrayref("select
+        p.repo, p.package, p.depends, p.makedepends
+        from
+        abs as p
+        join ? as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+        left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join ? as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+        where p.skip & ? > 0 and p.del = 0
+        group by p.id
+        having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance",
+        undef, $arch, $arch, $self->{skip}->{$arch});
+	my $res = undef;
+	my $cnt = 0;
+	foreach my $row (@$rows) {
+        my ($repo, $package) = @$row;
+	    $res .= sprintf("%s/%s, ", $repo, $package);
 	    $cnt++;
 	}
+    $res =~ s/, $//;
 	return [$cnt,$res];
-    }else{
+    } else {
         return undef;
     }
 }
 
-sub count{
+sub count {
     my $self = shift;
     
     my $data = shift;
@@ -319,21 +326,23 @@ sub count{
     return $ret;
 }
 
-sub done{
+sub done {
     my $self = shift;
-    my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where done = 1 and fail = 0"))[0] || 0;
-    my $armv7 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv7 on (armv7.id = abs.id) where done = 1 and fail = 0"))[0] || 0;
-    return [$armv5, $armv7];
+    my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where done = 1 and fail = 0 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv5}))[0] || 0;
+    my $armv7 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv7 on (armv7.id = abs.id) where done = 1 and fail = 0 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv7}))[0] || 0;
+    my $abs = ($self->{dbh}->selectrow_array("select count(*) from abs where skip != 0 and del = 0"))[0] || 0;
+    return [$armv5, $armv7, $abs];
 }
 
-sub failed{
+sub failed {
     my $self = shift;
-    my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where fail = 1"))[0] || 0;
-    my $armv7 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv7 on (armv7.id = abs.id) where fail = 1"))[0] || 0;
-    return [$armv5, $armv7];
+    my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where fail = 1 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv5}))[0] || 0;
+    my $armv7 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv7 on (armv7.id = abs.id) where fail = 1 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv7}))[0] || 0;
+    my $abs = ($self->{dbh}->selectrow_array("select count(*) from abs where skip != 0 and del = 0"))[0] || 0;
+    return [$armv5, $armv7, $abs];
 }
 
-sub status{
+sub status {
     my ($self, $package) = @_;
     if(defined($package) && $package ne '') {
         foreach my $arch ('armv5', 'armv7') {
@@ -351,7 +360,7 @@ sub status{
                     if($builder && $state eq 'unbuilt'){
                         $state = 'building';
                     }
-                    $state = "skipped" if ($skip);
+                    $state = "skipped" if !($skip & $self->{skip}->{$arch});
                     $state = "removed" if ($del);
                     my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
                     my $status = sprintf("[$arch] %s (%s|%s): repo=>%s, src=>%s, state=>%s", $name, "$pkgver-$pkgrel", "$repover-$reporel", $repo, $source, $state);
@@ -372,7 +381,7 @@ sub status{
                         $status .= ", blocked on: ";
                         foreach my $blockrow (@$blocklist) {
                             my ($blockrepo, $blockpkg, $blockfail, $blockskip, $blockdel) = @$blockrow;
-                            $status .= sprintf("%s/%s (%s) ", $blockrepo, $blockpkg, $blockdel?"D":$blockskip?"S":$blockfail?"F":"N");
+                            $status .= sprintf("%s/%s (%s) ", $blockrepo, $blockpkg, $blockdel?"D":!$blockskip?"S":$blockfail?"F":"N");
                         }
                     }
                     $q_irc->enqueue(['db','print',$status]);
@@ -521,7 +530,7 @@ sub pkg_skip {
     if ($rows < 1) {
         $q_irc->enqueue(['db','print',"Couldn't modify $pkg, check the name."]);
     } else {
-        $q_irc->enqueue(['db','print',sprintf("%s %s", $op?"Skipped":"Unskipped", $pkg)]);
+        $q_irc->enqueue(['db','print',sprintf("%s %s", $op?"Unskipped":"Skipped", $pkg)]);
         if ($op) {
             $self->pkg_prep('armv5', { pkgbase => $pkg });
             $self->pkg_prep('armv7', { pkgbase => $pkg });
@@ -599,10 +608,10 @@ sub update {
             $db_plugrel = $db_plugrel || "0";
             my $vars = `./pkgsource.sh $gitroot $repo $pkg`;
             chomp($vars);
-            my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$plugrel,$noautobuild) = split(/\|/, $vars);
+            my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$buildarch,$noautobuild) = split(/\|/, $vars);
             
-            # skip packages without a defined plugrel
-            next unless (defined $plugrel);
+            # skip a bad source
+            next unless (defined $pkgver);
             
             # set importance
             my $importance = $priority{$repo};
@@ -614,9 +623,9 @@ sub update {
             }
             
             # update abs table regardless of new version
-            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?)
-                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = 0, del = 0, importance = ?",
-                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $importance);
+            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, 0, ?)
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = ?, del = 0, importance = ?",
+                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $buildarch, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $buildarch, $importance);
             
             # create work unit package regardless of new version
             `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
@@ -674,10 +683,10 @@ sub update {
             }
             
             # skip a bad source
-            next if (! defined $pkgver);
+            next unless (defined $pkgver);
             
             # create work unit here for non-skipped and new packages, to repackage abs changes without ver-rel bump
-            if ((defined $db_skip && $db_skip == 0) || (! defined $db_skip)) {
+            if ((defined $db_skip && $db_skip > 0) || (! defined $db_skip)) {
                 `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
             }
             
@@ -694,8 +703,7 @@ sub update {
             }
             
             # update abs table
-            my $is_skip = 0;
-            $is_skip = 1 if ($db_skip);
+            my $is_skip = $db_skip||1;
             $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0, ?)
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0, importance = ?",
                               undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $importance);
@@ -757,7 +765,7 @@ sub update_continue {
     # build package_name_provides
     $q_irc->enqueue(['db', 'print', "Building package names.."]);
     print "building package_name_provides..\n";
-    my $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from abs where del = 0 and skip = 0");
+    my $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from abs where del = 0 and skip != 0");
     $self->{dbh}->do("delete from package_name_provides");
     foreach my $row (@$rows) {
         my ($id, $pkgname, $provides) = @$row;
@@ -775,7 +783,7 @@ sub update_continue {
     
     # build package_depends
     $q_irc->enqueue(['db', 'print', "Building package dependencies.."]);
-    $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs where del = 0 and skip = 0");
+    $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs where del = 0 and skip != 0");
     $self->{dbh}->do("delete from package_depends");
     foreach my $row (@$rows) {
         my ($id, $depends, $makedepends) = @$row;
