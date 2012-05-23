@@ -87,12 +87,12 @@ sub Run{
             }
             case "percent_done" {
                 my $table = @{$orders}[2];
-                my ($v5, $v7, $count) = $self->done();
+                my ($v5, $v7, $count) = @{$self->done()};
                 $q_irc->enqueue(['db','print',"Successful builds: ARMv5: $v5 of $count, ".sprintf("%0.2f%%",($v5/$count)*100)." | ARMv7: $v7 of $count, ".sprintf("%0.2f%%",($v7/$count)*100)]);
             }
             case "percent_failed" {
                 my $table = @{$orders}[2];
-                my ($v5, $v7, $count) = $self->failed();
+                my ($v5, $v7, $count) = @{$self->failed()};
                 $q_irc->enqueue(['db','print',"Failed builds: ARMv5: $v5 of $count, ".sprintf("%0.2f%%",($v5/$count)*100)." | ARMv7: $v7 of $count, ".sprintf("%0.2f%%",($v7/$count)*100)]);
             }
             case "prune" {
