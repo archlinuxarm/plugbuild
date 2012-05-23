@@ -236,16 +236,16 @@ sub disconnect {
 sub get_next_package {
     my ($self, $arch, $builder) = @_;
     if (defined($self->{dbh})) {
-    	$self->{dbh}->do("update ? set builder = null where builder = ?", undef, $arch, $builder);
+    	$self->{dbh}->do("update $arch set builder = null where builder = ?", undef, $builder);
         my @next_pkg = $self->{dbh}->selectrow_array("select
             p.repo, p.package, p.depends, p.makedepends
             from abs as p
-            join ? as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join ? as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+            join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
             where p.skip & ? > 0 and p.del = 0
             group by p.id
             having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1",
-            undef, $arch, $arch, $self->{skip}->{$arch});
+            undef, $self->{skip}->{$arch});
         return undef if (!$next_pkg[0]);
         return \@next_pkg;
     } else {
@@ -296,12 +296,12 @@ sub ready_detail {
         p.repo, p.package, p.depends, p.makedepends
         from
         abs as p
-        join ? as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-        left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join ? as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+        join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+        left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
         where p.skip & ? > 0 and p.del = 0
         group by p.id
         having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance",
-        undef, $arch, $arch, $self->{skip}->{$arch});
+        undef, $self->{skip}->{$arch});
 	my $res = undef;
 	my $cnt = 0;
 	foreach my $row (@$rows) {
