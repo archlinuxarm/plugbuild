@@ -788,16 +788,18 @@ sub update_continue {
     
     # build package_depends
     $q_irc->enqueue(['db', 'print', "Building package dependencies.."]);
-    $rows = $self->{dbh}->selectall_arrayref("select id, depends, makedepends from abs where del = 0 and skip != 0");
+    $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, depends, makedepends from abs where del = 0 and skip != 0");
     $self->{dbh}->do("delete from package_depends");
     foreach my $row (@$rows) {
-        my ($id, $depends, $makedepends) = @$row;
+        my ($id, $db_pkgname, $depends, $makedepends) = @$row;
         next if (!$depends && !$makedepends);
         $depends = "" unless $depends;
         $makedepends = "" unless $makedepends;
+        my @pkgname = split(/ /, $pkgname);
         my $statement = "insert into package_depends (dependency, package, nid) select distinct package, $id, id from package_name_provides where name in (";
         foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
             $name =~ s/(<|=|>).*//;
+            next if (grep {$_ eq $name} @pkgname);
             $statement .= "'$name', ";
         }
         $statement =~ s/, $/\)/;
