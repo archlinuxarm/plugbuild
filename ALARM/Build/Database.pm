@@ -795,7 +795,7 @@ sub update_continue {
         next if (!$depends && !$makedepends);
         $depends = "" unless $depends;
         $makedepends = "" unless $makedepends;
-        my @pkgname = split(/ /, $pkgname);
+        my @pkgname = split(/ /, $db_pkgname);
         my $statement = "insert into package_depends (dependency, package, nid) select distinct package, $id, id from package_name_provides where name in (";
         foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
             $name =~ s/(<|=|>).*//;
