@@ -39,16 +39,30 @@ sub Run {
         return -1;
     }
     
-    while (my $msg = $q_mir->dequeue) {
-        my ($from,$order) = @{$msg};
+    $self->{condvar} = AnyEvent->condvar;
+    $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
+    $self->{condvar}->wait;
+    
+    $db->disconnect;
+    
+    print "Mirror End\n";
+    return -1;
+}
+
+sub cb_queue {
+    my ($self) = @_;
+    my $msg = $q_mir->dequeue_nb();
+    
+    if ($msg) {
+        my ($from, $order) = @{$msg};
         print "Mirror: got $order from $from\n";
-        switch ($order) {
+        switch ($order){
             case "quit" {
                 $available->down_force(10);
-                last;
+                $self->{condvar}->broadcast;
             }
             case "recycle" {
-                last;
+                $self->{condvar}->broadcast;
             }
             
             # IRC orders
@@ -84,11 +98,6 @@ sub Run {
             }
         }
     }
-    
-    $db->disconnect;
-    
-    print "Mirror End\n";
-    return -1;
 }
 
 # update mirrors for a given architecture
