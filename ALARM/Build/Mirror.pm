@@ -116,9 +116,9 @@ sub update {
     }
     $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring $arch"]);
     
-    # set timer to check Tier 2 mirrors after 5 minutes
-    #undef $self->{$arch};
-    #$self->{$arch} = AnyEvent->timer(after => 300, cb => sub { $self->tier2($arch, $sync); });
+    # set timer to check Tier 2 mirrors after 60 seconds
+    undef $self->{$arch};
+    $self->{$arch} = AnyEvent->timer(after => 60, cb => sub { $self->tier2($arch, $sync); });
 }
 
 # check Tier 2 mirrors for synchronization
@@ -130,7 +130,7 @@ sub tier2 {
     my $rows = $self->{dbh}->selectall_arrayref("select id, domain from mirrors where tier = 2");
     foreach my $row (@$rows) {
         my ($id, $domain) = @$row;
-        my $remote = `wget -O - $domain/$arch/sync 2>/dev/null`;
+        my $remote = `wget -t 1 -T 20 -O - $domain/$arch/sync 2>/dev/null`;
         chomp $remote;
         if ($remote ne $sync) {
             $q_irc->enqueue(['mir', 'print', "[mirror] Tier 2 check failed on $domain"]);
