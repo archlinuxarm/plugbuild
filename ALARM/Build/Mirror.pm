@@ -148,7 +148,7 @@ sub geoip_refresh {
     
     $q_irc->enqueue(['mir', 'print', "[mirror] updating GeoIP table"]);
     
-    # 2-letter country code to numerical contintent map
+    # 2-letter country code to numerical continent map
     #   1 -> NA, 2 -> SA, 3 -> EU, 4 -> AF, 5 -> AS, 6 -> OC, 7 -> AN
     my %continent_map = (
         EU => 3, A1 => 1, A2 => 1, AP => 5, AF => 5, AL => 3, AQ => 7, DZ => 4, AS => 6, AD => 3, AO => 4, AG => 1, AZ => 3, AZ => 5, AR => 2, AU => 6, AT => 3, BS => 1, BH => 5, BD => 5,
