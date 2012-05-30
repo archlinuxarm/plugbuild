@@ -432,6 +432,25 @@ sub cb_queue {
                 }
             }
             
+            # force package to build on an idle builder
+            case "force" {
+                my ($data) = @{$msg}[2];
+                foreach my $oucn (keys %{$self->{clientsref}}) {
+                    next if (!($oucn =~ m/builder\/.*/));
+                    my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
+                    next unless $builder->{state} eq 'idle';
+                    if (ref($builder->{available}) eq 'ARRAY' ? grep {$_ eq $data->{arch}} @{$builder->{available}} : $builder->{available} eq $data->{arch}) {
+                        $q_irc->enqueue(['svc','print',"[force] builder: $builder->{cn} ($data->{arch}) - package: $data->{pkgbase}"]);
+                        print "   -> next for $builder->{cn} ($arch): $data->{pkgbase}\n";
+                        $handle->push_write(json => $data);
+                        $builder->{state} = 'building';
+                        $builder->{pkgbase} = $data->{pkgbase};
+                        $builder->{arch} = $arch;
+                        return;
+                    }
+                }
+                $q_irc->enqueue(['svc','print',"[force] no idle builder available for $data->{pkgbase}"]);
+            }
             # push json out to admin interface
             case "admin" {
                 my ($data) = @{$msg}[2];

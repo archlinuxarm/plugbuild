@@ -172,6 +172,14 @@ sub cb_publicmsg {
             case "!failed" {
                 $q_db->enqueue(['irc','percent_failed',$arg]);
             }
+            case "!force" {
+                my ($arch, $pkg) = split(/ /, $arg, 3);
+                if (!$pkg || !$arch || ($arch ne "5" && $arch ne "7")) {
+                    $self->irc_priv_print("usage: !force <5|7> <package>");
+                } else {
+                    $q_db->enqueue(['irc', 'force', "armv$arch", $pkg]);
+                }
+            }
 			case "!list" {
 				$q_svc->enqueue(['irc', 'list']);
 			}
