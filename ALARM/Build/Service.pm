@@ -441,11 +441,11 @@ sub cb_queue {
                     next unless $builder->{state} eq 'idle';
                     if (ref($builder->{available}) eq 'ARRAY' ? grep {$_ eq $data->{arch}} @{$builder->{available}} : $builder->{available} eq $data->{arch}) {
                         $q_irc->enqueue(['svc','print',"[force] builder: $builder->{cn} ($data->{arch}) - package: $data->{pkgbase}"]);
-                        print "   -> next for $builder->{cn} ($arch): $data->{pkgbase}\n";
-                        $handle->push_write(json => $data);
+                        print "   -> next for $builder->{cn} ($data->{arch}): $data->{pkgbase}\n";
+                        $builder->{handle}->push_write(json => $data);
                         $builder->{state} = 'building';
                         $builder->{pkgbase} = $data->{pkgbase};
-                        $builder->{arch} = $arch;
+                        $builder->{arch} = $data->{arch};
                         return;
                     }
                 }
@@ -527,9 +527,9 @@ sub cb_queue {
                 if ($cn) {
                     if (my $handle = $self->{clientsref}->{"builder/$cn"}) {
                         $handle->push_write(json => {command => 'maint'});
-                        $q_irc(['svc', 'print', "[maint] Requested maintenance run on $cn."]);
+                        $q_irc->enqueue(['svc', 'print', "[maint] Requested maintenance run on $cn."]);
                     } else {
-                        $q_irc(['svc', 'print', "[maint] No builder named $cn."]);
+                        $q_irc->enqueue(['svc', 'print', "[maint] No builder named $cn."]);
                     }
                 } else {
                     foreach my $oucn (keys %{$self->{clientsref}}) {
@@ -537,7 +537,7 @@ sub cb_queue {
                         my $handle = $self->{clientsref}->{$oucn};
                         $handle->push_write(json => {command => 'maint'});
                     }
-                    $q_irc(['svc', 'print', "[maint] Requested maintenance run on all builders."]);
+                    $q_irc->enqueue(['svc', 'print', "[maint] Requested maintenance run on all builders."]);
                 }
             }
             ## Mirror orders
