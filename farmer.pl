@@ -100,6 +100,7 @@ sub cb_starttls {
     if ($success) {
         $handle->rtimeout(0);   # stop auto-destruct
         $handle->on_read(sub { $handle->push_read(json => sub { cb_read(@_); }) });    # set read callback
+        $handle->push_write(json => {command => 'sync', address => $config{rsync}});
         return;
     }
     
@@ -141,6 +142,11 @@ sub cb_read {
         # repo-remove package
         case "remove" {
             system("repo-remove -q $config{$arch}/$repo/$repo.db.tar.gz $arg");
+        }
+        
+        # sync ACK
+        case "sync" {
+            print "-> Local repositories synchronized.\n";
         }
     }
 }
