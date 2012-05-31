@@ -33,7 +33,8 @@ my $current_fh;
 
 # cache setup
 #`rm -rf $cacheroot`;
-foreach my $arch (ref($config{available}) eq 'ARRAY' ? @{$config{available}} : $config{available}) {
+$config{available} = [ $config{available} ] if ref($config{available}) ne 'ARRAY';
+foreach my $arch (@{$config{available}}) {
     `mkdir -p $cacheroot/$arch`;
 }
 
