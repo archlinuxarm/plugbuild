@@ -4,7 +4,7 @@
 #
 
 use strict;
-use FindBin qw($Bin);
+use FindBin qw($Bin $Script);
 use Config::General qw(ParseConfig);
 use Switch;
 use AnyEvent;
@@ -12,6 +12,7 @@ use AnyEvent::TLS;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
 use JSON::XS;
+use Digest::MD5 qw(md5_hex);
 
 my %config = ParseConfig("$Bin/client.conf");
 
@@ -20,6 +21,8 @@ my $workroot    = "$Bin/work";
 my $pkgdest     = "$Bin/pkgdest";
 my $cacheroot   = "$Bin/cache";
 my $workurl     = "http://archlinuxarm.org/builder/work";
+
+my $md5 = hash_script();
 
 my $state;
 my $child;
@@ -43,6 +46,7 @@ my $timer_idle;
 
 # main event loop
 $state->{command} = 'idle';
+$timer_idle = AnyEvent->timer(after => 1800, interval => 21600, cb => sub { maintenance(); });
 con();
 $condvar->wait;
 
@@ -170,6 +174,11 @@ sub cb_read {
                 print "ACK: $state->{command}, setting idle\n";
                 $state->{command} = 'idle';
                 $timer_idle = AnyEvent->timer(after => 1800, interval => 21600, cb => sub { maintenance(); });
+            }
+        }
+        case "maint" {
+            if ($state->{command} eq 'idle') {
+                maintenance();
             }
         }
         case "next" {
@@ -403,6 +412,16 @@ sub cb_add {
     }
 }
 
+# return the hash of our script
+sub hash_script {
+    local $/ = undef;
+    open FILE, "$Bin/$Script";
+    binmode FILE;
+    my $hash = md5_hex(<FILE>);
+    close FILE;
+    return $hash;
+}
+
 # idle maintenance routine
 sub maintenance {
     # update chroots, clean out caches
@@ -413,4 +432,25 @@ sub maintenance {
     
     # host system update
     #system("pacman -Syyuf"); # capture output
+    
+    # pull updates from git, relaunch if newer
+    if (defined $config{git}) {
+        my $prefix = "";
+        $prefix = "$Bin/" unless substr($config{git}, 0, 1) eq "/";
+        system("pushd $prefix$config{git}; git pull; popd");
+        if ($md5 ne hash_script()) {
+            # relaunch ourselves
+            $childpid = fork();
+            if (!defined $childpid) {
+                print "error: can't fork\n";
+                return;
+            } elsif ($childpid) {   # parent process, die
+                $h->destroy;
+                $condvar->broadcast;
+            } else {                # child process, exec
+                sleep(5);           # give parent time to disconnect and quit
+                exec("$Bin/$Script");
+            }
+        }
+    }
 }

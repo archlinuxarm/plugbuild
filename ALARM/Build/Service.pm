@@ -520,6 +520,26 @@ sub cb_queue {
                 }
             }
             
+            # tell builder(s) to run idle maintenance now
+            case "maint" {
+                my $cn = @{$msg}[2];
+                
+                if ($cn) {
+                    if (my $handle = $self->{clientsref}->{"builder/$cn"}) {
+                        $handle->push_write(json => {command => 'maint'});
+                        $q_irc(['svc', 'print', "[maint] Requested maintenance run on $cn."]);
+                    } else {
+                        $q_irc(['svc', 'print', "[maint] No builder named $cn."]);
+                    }
+                } else {
+                    foreach my $oucn (keys %{$self->{clientsref}}) {
+                        next if (!($oucn =~ m/builder\/.*/));
+                        my $handle = $self->{clientsref}->{$oucn};
+                        $handle->push_write(json => {command => 'maint'});
+                    }
+                    $q_irc(['svc', 'print', "[maint] Requested maintenance run on all builders."]);
+                }
+            }
             ## Mirror orders
             # rsync push to farmer complete, set ready
             case "sync" {

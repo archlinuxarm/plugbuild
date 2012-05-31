@@ -183,6 +183,9 @@ sub cb_publicmsg {
 			case "!list" {
 				$q_svc->enqueue(['irc', 'list']);
 			}
+            case "!maint" {
+                $q_svc->enqueue(['irc', 'maint', $arg]);
+            }
             case "!mirrors" {
                 $q_mir->enqueue(['irc', 'list']);
             }
