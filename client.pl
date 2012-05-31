@@ -39,6 +39,7 @@ my $condvar = AnyEvent->condvar;
 my $h;
 my $w = AnyEvent->signal(signal => "INT", cb => sub { bailout(); });
 my $timer_retry;
+my $timer_idle;
 
 # main event loop
 $state->{command} = 'idle';
@@ -168,6 +169,7 @@ sub cb_read {
             if ($state->{command} eq $data->{command} && $state->{pkgbase} eq $data->{pkgbase}) {
                 print "ACK: $state->{command}, setting idle\n";
                 $state->{command} = 'idle';
+                $timer_idle = AnyEvent->timer(after => 1800, interval => 21600, cb => sub { maintenance(); });
             }
         }
         case "next" {
@@ -179,6 +181,7 @@ sub cb_read {
                 foreach my $file (keys %files) {                    # ensure there aren't lingering files
                     delete $files{$file};
                 }
+                undef $timer_idle;
                 undef $current_filename;
                 build_start($data->{arch}, $data->{repo}, $data->{pkgbase});
             }
@@ -306,6 +309,11 @@ sub build_finish {
             $current_filename = $filename;
         }
         
+        # send new packages to farmer
+        if (defined $config{farmer}) {
+            `rsync -rtl $pkgdest/* $config{farmer}/$state->{arch}`;
+        }
+        
         # prepare server for upload
         $state->{command} = 'prep';
         $h->push_write(json => $state);
@@ -395,3 +403,14 @@ sub cb_add {
     }
 }
 
+# idle maintenance routine
+sub maintenance {
+    # update chroots, clean out caches
+    foreach my $arch (@{$config{available}}) {
+        system("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root");
+        system("rm -f $cacheroot/$arch/*");
+    }
+    
+    # host system update
+    #system("pacman -Syyuf"); # capture output
+}
