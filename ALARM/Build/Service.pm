@@ -44,6 +44,7 @@ sub Run {
         # start-up
         my $service = tcp_server undef, $self->{port}, sub { $self->cb_accept(@_, 0); };
         my $nodesvc = tcp_server "127.0.0.1", $self->{port}+1, sub { $self->node_accept(@_, 0); };
+        my $github = tcp_server undef, $self->{port}+2, sub { $self->gh_accept(@_, 0); };
         my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(@_); });
         $self->{condvar}->wait;
         
@@ -123,6 +124,29 @@ sub node_accept {
     $self->{clients}->{$h} = \%client;
     $self->{clientsref}->{"admin/nodejs"} = $h;
 }
+
+# callback for accepting GitHub WebHook connection
+sub gh_accept {
+    my ($self, $fh, $address) = @_;
+    return unless $fh;
+    
+    # only accept connections from defined GitHub public service IPs
+    if (!grep {$_ eq $address} ('207.97.227.2531', '50.57.128.1971', '108.171.174.1781')) {
+        close $fh;
+        return;
+    }
+    
+    my $h;
+    $h = new AnyEvent::Handle
+                            fh          => $fh,
+                            peername    => $address,
+                            keepalive   => 1,
+                            no_delay    => 1,
+                            on_error    => sub { print "[SVC] GitHub disconnected.\n"; },
+                            on_read     => sub { $h->push_read(regex => qr<\015\012\015\012payload=>, undef, qr<^.*[^\015\012]>, sub { $self->gh_read(@_); })}
+                            ;
+    print "[SVC] Accepted GitHub connection from $address\n";
+};
 
 # callback that handles peer certificate verification
 sub cb_verify_cb {
@@ -394,6 +418,24 @@ sub cb_readfile {
             });
         }
     });
+}
+
+# read GitHub POST request
+sub gh_read {
+    my ($self, $h, $data) = @_;
+    if ($data =~ /Content-Length: (.*)\015?\012/) {
+        $h->push_read(chunk => $1 - 8,
+            sub {
+                my ($h, $data) = @_;
+                
+                $data =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
+                my $json = decode_json $data;
+                $q_irc->enqueue('svc', 'print', "[$json->{repository}->{name}] <$commit->{author}->{name}> $commit->{message}", 1]);;
+                $h->destroy;
+            });
+    } else {
+        $h->destroy;
+    }
 }
 
 # callback for the queue timer
