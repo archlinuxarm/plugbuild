@@ -44,7 +44,7 @@ sub Run {
         # start-up
         my $service = tcp_server undef, $self->{port}, sub { $self->cb_accept(@_, 0); };
         my $nodesvc = tcp_server "127.0.0.1", $self->{port}+1, sub { $self->node_accept(@_, 0); };
-        my $github = tcp_server undef, $self->{port}+2, sub { $self->gh_accept(@_, 0); };
+        my $github = tcp_server undef, $self->{port}+2, sub { $self->gh_accept(@_); };
         my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(@_); });
         $self->{condvar}->wait;
         
@@ -131,7 +131,7 @@ sub gh_accept {
     return unless $fh;
     
     # only accept connections from defined GitHub public service IPs
-    if (!grep {$_ eq $address} ('207.97.227.2531', '50.57.128.1971', '108.171.174.1781')) {
+    if (!grep {$_ eq $address} ('207.97.227.253', '50.57.128.197', '108.171.174.178')) {
         close $fh;
         return;
     }
@@ -430,7 +430,9 @@ sub gh_read {
                 
                 $data =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
                 my $json = decode_json $data;
-                $q_irc->enqueue(['svc', 'print', "[$json->{repository}->{name}] <$json->{author}->{name}> $json->{message}", 1]);
+                foreach my $commit (@{$json->{commits}}) {
+                    $q_irc->enqueue(['svc', 'print', "[$json->{repository}->{name}] <$commit->{author}->{name}> $commit->{message}", 1]);
+                }
                 $h->destroy;
             });
     } else {
