@@ -430,7 +430,7 @@ sub gh_read {
                 
                 $data =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
                 my $json = decode_json $data;
-                $q_irc->enqueue('svc', 'print', "[$json->{repository}->{name}] <$commit->{author}->{name}> $commit->{message}", 1]);;
+                $q_irc->enqueue(['svc', 'print', "[$json->{repository}->{name}] <$json->{author}->{name}> $json->{message}", 1]);
                 $h->destroy;
             });
     } else {
