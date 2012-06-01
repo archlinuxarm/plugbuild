@@ -130,7 +130,7 @@ sub cb_read {
         
         # move package from incoming directory into repository
         case "insert" {
-            system("mv -f $config{incoming}/$arch/$arg $config{$repo}/$arch/$repo");
+            system("mv -f $config{incoming}/$arch/$arg $config{$arch}/$repo");
         }
         
         # move package between repositories
