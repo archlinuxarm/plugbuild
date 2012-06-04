@@ -31,12 +31,17 @@ $state->{repo}    = $ARGV[0];
 $state->{pkgbase} = $ARGV[1];
 $state->{arch}    = $config{primary};
 
+# get package files from arguments
 foreach my $n (2 .. $#ARGV) {
     my $filename = $ARGV[$n];
     my $md5sum_file = `md5sum $filename`;
     $md5sum_file = (split(/ /, $md5sum_file))[0];
     $files{$filename} = $md5sum_file;
     $current_filename = $filename;
+    if (defined $config{farmer}) {
+        # send new packages to farmer
+        `rsync -rtl $filename $config{farmer}/$state->{arch}`;
+    }
 }
 
 # AnyEvent setup
