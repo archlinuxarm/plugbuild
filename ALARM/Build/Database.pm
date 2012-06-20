@@ -29,7 +29,7 @@ sub new{
 }
 
 
-sub Run{
+sub Run {
     my $self = shift;
     my $requests = -1;
     print "DbRun\n";
@@ -37,12 +37,20 @@ sub Run{
     my $open = $self->connect;
     
     # skip bitmasks
-    #  - 0000 = skip package, do not build
-    #  - 0001 = build all architectures
-    #  - 0010 = build for armv5 only
-    #  - 0100 = build for armv7 only
-    $self->{skip}->{armv5} = 3;     # 0b0011
-    $self->{skip}->{armv7} = 5;     # 0b0101
+    #  - 0000 0000 = skip package, do not build
+    #  - 0000 0001 = build all architectures
+    #  - 0000 0010 = build for armv5
+    #  - 0000 0100 = build for armv7
+    #  - 0000 1000 = reserved
+    #  - 0001 0000 = build for armv6+vfp sub-arch
+    #  - 0010 0000 = build for armv7+neon sub-arch
+    $self->{skip}->{armv5}  = 3;    # 0000 0011 - all | v5
+    $self->{skip}->{armv7}  = 5;    # 0000 0101 - all | v7
+    $self->{skip}->{armv6}  = 16;   # 0001 0000 - v6+vfp sub-arch only
+    $self->{skip}->{armv7n} = 32;   # 0010 0000 - v7+neon sub-arch only
+    
+    # load architectures
+    $self->rehash();
     
     # thread queue loop
     while (my $orders = $q_db->dequeue) {
@@ -132,6 +140,9 @@ sub Run{
                         $q_irc->enqueue(['db','print','ready: unknown error.']);
                     }
                 }
+            }
+            case "rehash" {
+                $self->rehash();
             }
             case "review" {
                 if (defined $self->{dellist}) {
@@ -244,19 +255,32 @@ sub disconnect {
     }
 }
 
+sub rehash {
+    my $self = shift;
+    
+    undef $self->{arch};
+    my $rows = $self->{dbh}->selectall_arrayref("select * from architectures");
+    foreach my $row (@$rows) {
+        my ($arch, $parent) = @$row;
+        $self->{arch}->{$arch} = $parent || $arch;
+        print "DB: rehash: $arch -> $self->{arch}->($arch)\n";
+    }
+}
+
 sub get_next_package {
     my ($self, $arch, $builder) = @_;
+    my $parent = $self->{arch}->{$arch};
     if (defined($self->{dbh})) {
     	$self->{dbh}->do("update $arch set builder = null where builder = ?", undef, $builder);
         my @next_pkg = $self->{dbh}->selectrow_array("select
             p.repo, p.package, p.depends, p.makedepends
             from abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+            left outer join (select dp.package as id, case when skip & ? then max(a.done) else max(parent.done) end as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) inner join $parent as parent on (parent.id = pn.package) inner join abs on (abs.id = a.id) group by id, name) as d on (d.id = p.id)
             where p.skip & ? > 0 and p.del = 0
             group by p.id
             having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1",
-            undef, $self->{skip}->{$arch});
+            undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
         return undef if (!$next_pkg[0]);
         return \@next_pkg;
     } else {
