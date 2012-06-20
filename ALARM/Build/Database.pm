@@ -1,4 +1,8 @@
 #!/usr/bin/perl -w
+#
+# MySQL and repository database management
+#
+
 use strict;
 
 package ALARM::Build::Database;
@@ -227,6 +231,7 @@ sub Run {
     return $requests;
 }
 
+# connect to database
 sub connect {
     my ($self) = @_;
     if( $available->down_nb ){
@@ -246,6 +251,7 @@ sub connect {
     return undef;
 }
 
+# disconnect from database
 sub disconnect {
     my ($self) = @_;
     if( defined($self->{dbh}) ){
@@ -255,6 +261,7 @@ sub disconnect {
     }
 }
 
+# rehash stored attributes pulled from database
 sub rehash {
     my $self = shift;
     
@@ -267,6 +274,7 @@ sub rehash {
     }
 }
 
+# get next available package to build
 sub get_next_package {
     my ($self, $arch, $builder) = @_;
     my $parent = $self->{arch}->{$arch};
@@ -288,6 +296,7 @@ sub get_next_package {
     }
 }
 
+# return number of packages ready to build
 sub ready {
     my $self = shift;
     
@@ -321,6 +330,7 @@ sub ready {
     }
 }
 
+# return names of packages ready to build
 sub ready_detail {
     my $self = shift;
     my $arch = shift||5;
@@ -348,6 +358,7 @@ sub ready_detail {
 	return [$cnt,$res];
 }
 
+# obsolete: return a count of rows from a table
 sub count {
     my $self = shift;
     
@@ -358,6 +369,7 @@ sub count {
     return $ret;
 }
 
+# return number of packages complete for each architecture
 sub done {
     my $self = shift;
     my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where done = 1 and fail = 0 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv5}))[0] || 0;
@@ -366,6 +378,7 @@ sub done {
     return [$armv5, $armv7, $abs];
 }
 
+# return number of packages that failed to build for each architecture
 sub failed {
     my $self = shift;
     my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where fail = 1 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv5}))[0] || 0;
@@ -374,6 +387,7 @@ sub failed {
     return [$armv5, $armv7, $abs];
 }
 
+# return the current status of a package within the build system
 sub status {
     my ($self, $package) = @_;
     if(defined($package) && $package ne '') {
@@ -426,6 +440,7 @@ sub status {
     }
 }
 
+# add a completed package to the repository
 sub pkg_add {
     my ($self, $arch, $data) = @_;
     my $repo = $data->{repo};
@@ -609,6 +624,7 @@ sub pkg_info {
     }
 }
 
+# update database with new packages from git and ABS
 sub update {
     my $self = shift;
     my (%gitlist, %abslist, %newlist, %dellist);
@@ -782,6 +798,7 @@ sub update {
     }
 }
 
+# complete the update with package purging and dependency table rebuilding
 sub update_continue {
     my ($self, $list) = @_;
     my %dellist;
