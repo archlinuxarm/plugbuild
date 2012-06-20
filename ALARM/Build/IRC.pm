@@ -166,6 +166,14 @@ sub cb_publicmsg {
                     $self->irc_priv_print("usage: !count <table>");
                 }
             }
+            case "!deselect" {
+                my ($arch, $pkg) = split(/ /, $arg, 3);
+                if ($arch && $pkg) {
+                    $q_db->enqueue(['irc', 'deselect', $arch, $pkg]);
+                } else {
+                    $self->irc_priv_print("usage: !select <arch> <package>");
+                }
+            }
             case "!done" {
                 $q_db->enqueue(['irc','percent_done',$arg]);
             }
@@ -215,6 +223,14 @@ sub cb_publicmsg {
             }
             case "!review" {
                 $q_db->enqueue(['irc','review']);
+            }
+            case "!select" {
+                my ($arch, $pkg) = split(/ /, $arg, 3);
+                if ($arch && $pkg) {
+                    $q_db->enqueue(['irc', 'select', $arch, $pkg]);
+                } else {
+                    $self->irc_priv_print("usage: !select <arch> <package>");
+                }
             }
             case "!skip" {
                 if ($arg) {

@@ -84,6 +84,10 @@ sub Run {
                 my $count = $self->count($table);
                 $q_irc->enqueue(['db','print',"$table has $count"]);
             }
+            case "deselect" {
+                my ($arch, $pkg) = @{$orders}[2,3];
+                $self->pkg_select($arch, $pkg, 0);
+            }
             case "done_pub" {
                 my $rows = $self->{dbh}->selectall_arrayref("select arch, count(*) from files where del = 0 group by arch order by arch");
                 my $result = "Available packages: ";
@@ -141,6 +145,10 @@ sub Run {
             }
             case "search" {
                 $self->pkg_search(@{$orders}[2]);
+            }
+            case "select" {
+                my ($arch, $pkg) = @{$orders}[2,3];
+                $self->pkg_select($arch, $pkg, 1);
             }
             case "skip" {
                 $self->pkg_skip(@{$orders}[2], 0);
@@ -590,7 +598,7 @@ sub pkg_unfail {
         if ($skip & $self->{skip}->{$arch}) {        
             $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch"]);
         } else {
-            $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch; however, the package is skipped for thisarchitecture."]);
+            $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch; however, the package is skipped for this architecture."]);
         }
     }
 }
@@ -646,6 +654,34 @@ sub pkg_info {
         $return .= "(split from $pkgbase) " if $pkgbase ne $pkgname;
         $return .= "$pkgver-$pkgrel, available for $arch: $pkgdesc";
         $q_irc->enqueue(['db', 'print', $return, 1]);
+    }
+}
+
+# (de)select package from building for an architecture
+sub pkg_select {
+    my ($self, $arch, $pkg, $op) = @_;
+    my $cmd = $op?"select":"deselect";
+    
+    # determine if we were given shorthand arch string or not
+    if (!$self->{arch}->{$arch}) {
+        $arch = "armv$arch";
+        if (!$self->{arch}->{$arch}) {
+            $q_irc->enqueue(['db', 'print', "usage: !$cmd <arch> <package>"]);
+            return;
+        }
+    }
+    
+    my ($git) = $self->{dbh}->selectrow_array("select git from abs where package = ?", undef, $pkg);
+    if ($git == 1) {
+        $q_irc->enqueue(['db', 'print', "[$cmd] $pkg is sourced from git, adjust buildarch value to make changes."]);
+        return;
+    }
+    
+    my $bit = $op?'|':'^';
+    if ($self->{dbh}->do("update abs set skip = skip $bit ? where package = ?", undef, $self->{skip}->{$arch}, $pkg) < 1) {
+        $q_irc->enqueue(['db', 'print', "[$cmd] No package named $pkg"]);
+    } else {
+        $q_irc->enqueue(['db', 'print', "[$cmd] $pkg $cmd" . "ed for $arch"]);
     }
 }
 
