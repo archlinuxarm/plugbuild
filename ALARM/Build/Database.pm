@@ -379,52 +379,69 @@ sub failed {
 # return the current status of a package within the build system
 sub status {
     my ($self, $package) = @_;
-    if(defined($package) && $package ne '') {
-        foreach my $arch ('armv5', 'armv7') {
-            my $ar = $self->{dbh}->selectall_arrayref("select package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, del from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
-            if( scalar(@{$ar}) ){ # 1 or more
-                foreach my $r (@{$ar}){
-                    my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $del) = @{$r};
-                    
-                    my ($repover, $reporel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel from files where del = 0 and arch = ? and pkgbase = ? limit 1", undef, $arch, $package);
-                    if (!$repover) {
-                        $repover = 0;
-                        $reporel = 0;
-                    }
-                    my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
-                    if($builder && $state eq 'unbuilt'){
-                        $state = 'building';
-                    }
-                    $state = "skipped" if !($skip & $self->{skip}->{$arch});
-                    $state = "removed" if ($del);
-                    my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
-                    my $status = sprintf("[$arch] %s (%s|%s): repo=>%s, src=>%s, state=>%s", $name, "$pkgver-$pkgrel", "$repover-$reporel", $repo, $source, $state);
-                    $status .= sprintf(", builder=>%s",$builder) if $state eq 'building';
-                    
-                    my $names;
-                    foreach my $name (split(/ /, $pkgname)) {
-                        $names .= "'$name', ";
-                    }
-                    $names =~ s/, $//;
-                    my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, arm.fail, abs.skip, abs.del from package_name_provides as pn
-                                                                     inner join package_depends as pd on (pn.package = pd.package)
-                                                                     inner join package_name_provides as pnp on (pd.nid = pnp.id)
-                                                                     inner join $arch as arm on (pd.dependency = arm.id)
-                                                                     inner join abs on (arm.id = abs.id)
-                                                                     where pn.name in ($names) group by pnp.name having max(done) = 0");
-                    if (scalar(@{$blocklist})) {
-                        $status .= ", blocked on: ";
-                        foreach my $blockrow (@$blocklist) {
-                            my ($blockrepo, $blockpkg, $blockfail, $blockskip, $blockdel) = @$blockrow;
-                            $status .= sprintf("%s/%s (%s) ", $blockrepo, $blockpkg, $blockdel?"D":!$blockskip?"S":$blockfail?"F":"N");
-                        }
-                    }
-                    $q_irc->enqueue(['db','print',$status]);
+    my $skipret = undef;
+    
+    if (defined($package) && $package ne '') {
+        foreach my $arch (keys %{$self->{arch}}) {
+            my @row = $self->{dbh}->selectrow_array("select package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, del from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
+            if ($row[0]) { # package found
+                my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $del) = @row;
+                
+                # add to combined skipped architecture printout at end
+                if !($skip & $self->{skip}->{$arch}) {
+                    $skipret .= "$arch, ";
+                    last;
                 }
-            }else{ # zilch
-                $q_irc->enqueue(['db','print','could not find package \''.$package.'\'']);
+                
+                # package removed from repo, print and bail out
+                if ($del) {
+                    $q_irc->enqueue(['db', 'print', "[status] $repo/$name has been removed."]);
+                    return;
+                }
+                
+                # make data human-readable
+                my ($repover, $reporel) = $self->{dbh}->selectrow_array("select pkgver, pkgrel from files where del = 0 and arch = ? and pkgbase = ? limit 1", undef, $arch, $package);
+                if (!$repover) {
+                    $repover = 0;
+                    $reporel = 0;
+                }
+                my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
+                $state = 'building' if ($builder && $state eq 'unbuilt');
+                
+                my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
+                my $status = "[$arch] $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
+                $status .= ", builder=>$builder" if $state eq 'building';
+                
+                # generate list of packages blocking this package from building
+                my $names;
+                foreach my $name (split(/ /, $pkgname)) {
+                    $names .= "'$name', ";
+                }
+                $names =~ s/, $//;
+                my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, case when skip & ? then arm.fail else parent.fail end as fail, abs.skip, abs.del from package_name_provides as pn
+                                                                 inner join package_depends as pd on (pn.package = pd.package)
+                                                                 inner join package_name_provides as pnp on (pd.nid = pnp.id)
+                                                                 inner join $arch as arm on (pd.dependency = arm.id)
+                                                                 inner join $self->{arch}->{$arch} as parent on (pd.dependency = parent.id)
+                                                                 inner join abs on (arm.id = abs.id)
+                                                                 where pn.name in ($names) group by pnp.name having (case when skip & ? then max(arm.done) else max(parent.done) end) = 0", undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
+                if (scalar(@{$blocklist})) {
+                    $status .= ", blocked on: ";
+                    foreach my $blockrow (@$blocklist) {
+                        my ($blockrepo, $blockpkg, $blockfail, $blockskip, $blockdel) = @$blockrow;
+                        $status .= sprintf("%s/%s (%s) ", $blockrepo, $blockpkg, $blockdel?"D":!$blockskip?"S":$blockfail?"F":"N");
+                    }
+                }
+                
+                $q_irc->enqueue(['db', 'print', $status]);
+            } else {
+                $q_irc->enqueue(['db', 'print', "could not find package $package"]);
                 last;
             }
+        }
+        if ($skipret) {
+            $skipret =~ /, $//;
+            $q_irc->enqueue(['db', 'print', "[status] $package skipped for $skipret"]);
         }
     }
 }
