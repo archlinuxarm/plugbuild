@@ -124,11 +124,7 @@ sub Run {
             case "ready" {
                 my $arch = @{$orders}[2];
                 if (defined $arch) {
-                    if (defined $self->{arch}->{$arch}) {
-                        $self->ready_detail($arch);
-                    } else {
-                        $q_irc->enqueue(['db', 'print', "Unknown architecture: $arch"]);
-                    }
+                    $self->ready_detail($arch);
                 } else {
                     $self->ready();
                 }
@@ -311,8 +307,17 @@ sub ready {
 # return names of packages ready to build
 sub ready_detail {
     my ($self, $arch) = @_;
-    my $parent = $self->{arch}->{$arch};
     
+    # determine if we were given shorthand arch string or not
+    if (!$self->{arch}->{$arch}) {
+        $arch = "armv$arch";
+        if (!$self->{arch}->{$arch}) {
+            $q_irc->enqueue(['db', 'print', "usage: !ready [arch]"]);
+            return;
+        }
+    }
+    
+    my $parent = $self->{arch}->{$arch};
     my $rows = $self->{dbh}->selectall_arrayref("select
         p.repo, p.package
         from
@@ -562,7 +567,7 @@ sub pkg_fail {
 # unfail package or all
 sub pkg_unfail {
     my ($self, $arch, $package) = @_;
-    my ($rows, $parent);
+    my $rows;
     
     # determine if we were given shorthand arch string or not
     if (!$self->{arch}->{$arch}) {
@@ -585,7 +590,7 @@ sub pkg_unfail {
         if ($skip & $self->{skip}->{$arch}) {        
             $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch"]);
         } else {
-            $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch; however, the package is skipped for this architecture."]);
+            $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch; however, the package is skipped for thisarchitecture."]);
         }
     }
 }
