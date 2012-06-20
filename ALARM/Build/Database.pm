@@ -109,14 +109,10 @@ sub Run {
                 $self->pkg_info(@{$orders}[2]);
             }
             case "percent_done" {
-                my $table = @{$orders}[2];
-                my ($v5, $v7, $count) = @{$self->done()};
-                $q_irc->enqueue(['db','print',"Successful builds: ARMv5: $v5 of $count, ".sprintf("%0.2f%%",($v5/$count)*100)." | ARMv7: $v7 of $count, ".sprintf("%0.2f%%",($v7/$count)*100)]);
+                $self->done();
             }
             case "percent_failed" {
-                my $table = @{$orders}[2];
-                my ($v5, $v7, $count) = @{$self->failed()};
-                $q_irc->enqueue(['db','print',"Failed builds: ARMv5: $v5 of $count, ".sprintf("%0.2f%%",($v5/$count)*100)." | ARMv7: $v7 of $count, ".sprintf("%0.2f%%",($v7/$count)*100)]);
+                $self->failed();
             }
             case "prune" {
                 my $pkg = @{$orders}[2];
@@ -355,19 +351,29 @@ sub count {
 # return number of packages complete for each architecture
 sub done {
     my $self = shift;
-    my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where done = 1 and fail = 0 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv5}))[0] || 0;
-    my $armv7 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv7 on (armv7.id = abs.id) where done = 1 and fail = 0 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv7}))[0] || 0;
-    my $abs = ($self->{dbh}->selectrow_array("select count(*) from abs where skip != 0 and del = 0"))[0] || 0;
-    return [$armv5, $armv7, $abs];
+    my $ret = "Successful builds: ";
+    
+    foreach my $arch (keys %{$self->{arch}}) {
+        my $count = ($self->{dbh}->selectrow_array("select count(*) from abs inner join $arch as a on (a.id = abs.id) where done = 1 and fail = 0 and skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
+        my $total = ($self->{dbh}->selectrow_array("select count(*) from abs where skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
+        $ret .= "$arch: $count/$total (" . sprintf("%0.2f%%", ($count/$total)*100) . ") | ";
+    }
+    $ret ~= s/ | $//;
+    $q_irc->enqueue(['db', 'print', $ret]);
 }
 
 # return number of packages that failed to build for each architecture
 sub failed {
     my $self = shift;
-    my $armv5 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv5 on (armv5.id = abs.id) where fail = 1 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv5}))[0] || 0;
-    my $armv7 = ($self->{dbh}->selectrow_array("select count(*) from abs inner join armv7 on (armv7.id = abs.id) where fail = 1 and skip & ? > 0 and del = 0", undef, $self->{skip}->{armv7}))[0] || 0;
-    my $abs = ($self->{dbh}->selectrow_array("select count(*) from abs where skip != 0 and del = 0"))[0] || 0;
-    return [$armv5, $armv7, $abs];
+    my $ret = "Failed builds: ";
+    
+    foreach my $arch (keys %{$self->{arch}}) {
+        my $count = ($self->{dbh}->selectrow_array("select count(*) from abs inner join $arch as a on (a.id = abs.id) where fail = 1 and skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
+        my $total = ($self->{dbh}->selectrow_array("select count(*) from abs where skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
+        $ret .= "$arch: $count/$total (" . sprintf("%0.2f%%", ($count/$total)*100) . ") | ";
+    }
+    $ret ~= s/ | $//;
+    $q_irc->enqueue(['db', 'print', $ret]);
 }
 
 # return the current status of a package within the build system
