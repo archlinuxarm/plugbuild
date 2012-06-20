@@ -198,7 +198,8 @@ sub cb_publicmsg {
                 }
             }
             case "!ready" {
-                $q_db->enqueue(['irc','ready',$arg]);
+                my ($arch) = split(/ /, $arg, 2);
+                $q_db->enqueue(['irc','ready',$arch]);
             }
             case "!recycle" {
                 if($arg){

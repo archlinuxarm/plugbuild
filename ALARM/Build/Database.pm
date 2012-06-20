@@ -126,23 +126,15 @@ sub Run {
                 $self->pkg_prep('armv7', { pkgbase => $pkg });
             }
             case "ready" {
-                if (defined @{$orders}[2]) {
-                    my $target = @{$orders}[2];
-                    my ($detail,$which) = split(/\s/,$target);
-                    if ($target eq 'detail' || $detail eq 'detail') {
-                        my $ready = $self->ready_detail($which);
-                        $q_irc->enqueue(['db','print',sprintf("Packages waiting to be built: %d",$ready->[0])]);
-                        if( $ready->[0] >= 1) {
-                            $q_irc->enqueue(['db','print',sprintf("Packages waiting: %s",$ready->[1])]);
-                        }
+                my $arch = @{$orders}[2];
+                if (defined $arch) {
+                    if (defined $self->{arch}->{$arch}) {
+                        $self->ready_detail($arch);
+                    } else {
+                        $q_irc->enqueue(['db', 'print', "Unknown architecture: $arch"]);
                     }
                 } else {
-                    my $ready = $self->ready();
-                    if( defined($ready->[0]) ){
-                        $q_irc->enqueue(['db','print',"Packages waiting to be built: ARMv5: $ready->[0], ARMv7: $ready->[1]"]);
-                    }else{
-                        $q_irc->enqueue(['db','print','ready: unknown error.']);
-                    }
+                    $self->ready();
                 }
             }
             case "rehash" {
@@ -299,63 +291,54 @@ sub get_next_package {
 # return number of packages ready to build
 sub ready {
     my $self = shift;
+    my $ret = "Packages waiting to be built: ";
     
-    if (defined($self->{dbh})) {
-        my @next_pkg5 = $self->{dbh}->selectrow_array("select count(*) from (
+    foreach my $arch (keys %{$self->{arch}}) {
+        my $parent = $self->{arch}->{$arch};
+        my @next_pkg = $self->{dbh}->selectrow_array("select count(*) from (
             select
                 p.repo, p.package, p.depends, p.makedepends
                 from
                 abs as p
-                    join armv5 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv5 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+                    join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+                    left outer join (select dp.package as id, case when skip & ? then max(a.done) else max(parent.done) end as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) inner join $parent as parent on (parent.id = pn.package) inner join abs on (abs.id = a.id) group by id, name) as d on (d.id = p.id)
                 where p.skip & ? > 0 and p.del = 0  
                 group by p.id
                 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
-            ) as xx", undef, $self->{skip}->{armv5});
-        my @next_pkg7 = $self->{dbh}->selectrow_array("select count(*) from (
-            select
-                p.repo, p.package, p.depends, p.makedepends
-                from
-                abs as p
-                    join armv7 as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join armv7 as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
-                where p.skip & ? > 0 and p.del = 0  
-                group by p.id
-                having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
-            ) as xx", undef, $self->{skip}->{armv7});
-        return undef if (!defined($next_pkg5[0]) && !defined($next_pkg7[0]));
-        return [$next_pkg5[0], $next_pkg7[0]];
-    } else {
-        return undef;
+            ) as xx", undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
+        $ret .= "$arch: $next_pkg[0], ";
     }
+    $ret ~= s/, $//;
+    $q_irc->enqueue(['db', 'print', $ret]);
 }
 
 # return names of packages ready to build
 sub ready_detail {
-    my $self = shift;
-    my $arch = shift||5;
+    my ($self, $arch) = @_;
+    my $parent = $self->{arch}->{$arch};
     
-    $arch = (Scalar::Util::looks_like_number($arch))?$arch:5;
-    $arch = 'armv'.$arch;
     my $rows = $self->{dbh}->selectall_arrayref("select
-        p.repo, p.package, p.depends, p.makedepends
+        p.repo, p.package
         from
         abs as p
-        join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-        left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+            join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+            left outer join (select dp.package as id, case when skip & ? then max(a.done) else max(parent.done) end as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) inner join $parent as parent on (parent.id = pn.package) inner join abs on (abs.id = a.id) group by id, name) as d on (d.id = p.id)
         where p.skip & ? > 0 and p.del = 0
         group by p.id
         having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance",
-        undef, $self->{skip}->{$arch});
-	my $res = undef;
+        undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
+    
+	my $ret = undef;
 	my $cnt = 0;
 	foreach my $row (@$rows) {
         my ($repo, $package) = @$row;
-	    $res .= sprintf("%s/%s, ", $repo, $package);
+	    $ret .= "$repo/$package, ";
 	    $cnt++;
 	}
-    $res =~ s/, $//;
-	return [$cnt,$res];
+    $ret =~ s/, $//;
+    
+    $q_irc->enqueue(['db', 'print', "Packages waiting to be built: $cnt"]);
+    $q_irc->enqueue(['db', 'print', "Packages waiting: $res"]) if $cnt > 0;
 }
 
 # obsolete: return a count of rows from a table
