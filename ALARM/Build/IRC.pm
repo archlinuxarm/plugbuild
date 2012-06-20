@@ -250,10 +250,10 @@ sub cb_publicmsg {
 			}
             case "!unfail" {
                 my ($arch, $pkg) = split(/ /, $arg, 2);
-                if ($pkg && ($arch eq "5" || $arch eq "7")) {
-                    $q_db->enqueue(['irc','unfail',$arg]);
+                if ($pkg && $arch) {
+                    $q_db->enqueue(['irc', 'unfail', $arch, $pkg]);
                 } else {
-                    $self->irc_priv_print("usage: !unfail <5|7> <package|all>");
+                    $self->irc_priv_print("usage: !unfail <arch> <package|all>");
                 }
             }
             case "!unskip" {

@@ -154,7 +154,7 @@ sub Run {
                 $self->status($arch, $package);
             }
             case "unfail" {
-                my ($arch, $package) = split(/ /, @{$orders}[2], 2);
+                my ($arch, $package) = @{$orders}[2,3];
                 $self->pkg_unfail($arch, $package);
             }
             case "unskip" {
@@ -562,8 +562,17 @@ sub pkg_fail {
 # unfail package or all
 sub pkg_unfail {
     my ($self, $arch, $package) = @_;
-    my $rows;
-    $arch = "armv$arch";
+    my ($rows, $parent);
+    
+    # determine if we were given shorthand arch string or not
+    if (!$self->{arch}->{$arch}) {
+        $arch = "armv$arch";
+        if (!$self->{arch}->{$arch}) {
+            $q_irc->enqueue(['db', 'print', "usage: !unfail <arch> <package|all>"]);
+            return;
+        }
+    }
+    
     if ($package eq "all") {
         $rows = $self->{dbh}->do("update $arch set fail = 0, done = 0, builder = null where fail = 1");
     } else {
@@ -572,7 +581,12 @@ sub pkg_unfail {
     if ($rows < 1) {
         $q_irc->enqueue(['db','print',"Couldn't unfail $package for $arch"]);
     } else {
-        $q_irc->enqueue(['db','print',"Unfailed $package for $arch"]);
+        my ($skip) = $self->{dbh}->selectrow_array("select skip from abs where package = ?", undef, $package);
+        if ($skip & $self->{skip}->{$arch}) {        
+            $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch"]);
+        } else {
+            $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch; however, the package is skipped for this architecture."]);
+        }
     }
 }
 
@@ -584,7 +598,7 @@ sub pkg_skip {
         $q_irc->enqueue(['db','print',"Couldn't modify $pkg, check the name."]);
     } else {
         $q_irc->enqueue(['db','print',sprintf("%s %s", $op?"Unskipped":"Skipped", $pkg)]);
-        if ($op) {
+        if (!$op) {
             $self->pkg_prep('armv5', { pkgbase => $pkg });
             $self->pkg_prep('armv7', { pkgbase => $pkg });
         }
