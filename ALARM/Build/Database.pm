@@ -40,20 +40,7 @@ sub Run {
     
     my $open = $self->connect;
     
-    # skip bitmasks
-    #  - 0000 0000 = skip package, do not build
-    #  - 0000 0001 = build all architectures
-    #  - 0000 0010 = build for armv5
-    #  - 0000 0100 = build for armv7
-    #  - 0000 1000 = reserved
-    #  - 0001 0000 = build for armv6+vfp sub-arch
-    #  - 0010 0000 = build for armv7+neon sub-arch
-    $self->{skip}->{armv5}  = 3;    # 0000 0011 - all | v5
-    $self->{skip}->{armv7}  = 5;    # 0000 0101 - all | v7
-    $self->{skip}->{armv6}  = 16;   # 0001 0000 - v6+vfp sub-arch only
-    $self->{skip}->{armv7n} = 32;   # 0010 0000 - v7+neon sub-arch only
-    
-    # load architectures
+    # load architectures and skip bitmasks
     $self->rehash();
     
     # thread queue loop
@@ -254,15 +241,22 @@ sub disconnect {
 }
 
 # rehash stored attributes pulled from database
+#   skip bitmasks in use:
+#    - armv5:  0000 0011 ( 3) - all | v5
+#    - armv7:  0000 0101 ( 5) - all | v7
+#    - armv6:  0001 0000 (16) - v6+vfp sub-arch only
+#    - armv7n: 0010 0000 (32) - v7h+neon sub-arch only
 sub rehash {
     my $self = shift;
     
     undef $self->{arch};
+    undef $self->{skip};
     my $rows = $self->{dbh}->selectall_arrayref("select * from architectures");
     foreach my $row (@$rows) {
-        my ($arch, $parent) = @$row;
+        my ($arch, $parent, $skip) = @$row;
         $self->{arch}->{$arch} = $parent || $arch;
-        print "DB: rehash: $arch -> $self->{arch}->($arch)\n";
+        $self->{skip}->{$arch} = $skip || 0;
+        print "DB: rehash: $arch -> $self->{arch}->{$arch}, bitmask $self->{skip}->{$arch}\n";
     }
 }
 
