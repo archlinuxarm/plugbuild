@@ -23,6 +23,11 @@ if [[ ${noautobuild} ]]; then
 else
     string="$string|0"
 fi
+if [[ ${highmem} ]]; then
+    string="$string|1"
+else
+    string="$string|0"
+fi
 
 # return
 echo ${string}

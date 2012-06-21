@@ -96,6 +96,15 @@ sub Run {
                     $q_svc->enqueue(['db', 'force', { command => 'next', arch => "$arch", repo => $force[1], pkgbase => $pkg }]);
                 }
             }
+            case "highmem" {
+                my ($pkg) = @{$orders}[2];
+                my $rows = $self->{dbh}->do("update abs set highmem = highmem ^ 1 where package = ?", undef, $pkg);
+                if ($rows < 1) {
+                    $q_irc->enqueue(['db', 'print', "[highmem] No such package named $pkg"]);
+                } else {
+                    $q_irc->enqueue(['db', 'print', "[highmem] Toggled $pkg"]);
+                }
+            }
             case "info" {
                 $self->pkg_info(@{$orders}[2]);
             }
@@ -184,8 +193,8 @@ sub Run {
                 $self->pkg_fail($arch, $package);
             }
             case "next" {
-                my ($arch, $builder) = @{$orders}[2,3];
-                my $next = $self->get_next_package($arch, $builder);
+                my ($arch, $builder, $highmem) = @{$orders}[2,3,4];
+                my $next = $self->get_next_package($arch, $builder, $highmem);
                 if ($next) {
                     $self->pkg_work(@{$next}[1], $arch, $builder);
                     $q_svc->enqueue(['db', 'next', $arch, $builder, { command => 'next', arch => $arch, repo => $next->[0], pkgbase => $next->[1] }]);
@@ -262,8 +271,9 @@ sub rehash {
 
 # get next available package to build
 sub get_next_package {
-    my ($self, $arch, $builder) = @_;
+    my ($self, $arch, $builder, $highmem) = @_;
     my $parent = $self->{arch}->{$arch};
+    my $memstr = $highmem?"":"and p.highmem = 0";
     if (defined($self->{dbh})) {
     	$self->{dbh}->do("update $arch set builder = null where builder = ?", undef, $builder);
         my @next_pkg = $self->{dbh}->selectrow_array("select
@@ -271,7 +281,7 @@ sub get_next_package {
             from abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
             left outer join (select dp.package as id, case when skip & ? then max(a.done) else max(parent.done) end as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) inner join $parent as parent on (parent.id = pn.package) inner join abs on (abs.id = a.id) group by id, name) as d on (d.id = p.id)
-            where p.skip & ? > 0 and p.del = 0
+            where p.skip & ? > 0 and p.del = 0 $memstr
             group by p.id
             having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1",
             undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
@@ -390,9 +400,9 @@ sub status {
     
     if (defined($package) && $package ne '') {
         foreach my $arch (keys %{$self->{arch}}) {
-            my @row = $self->{dbh}->selectrow_array("select package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, del from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
+            my @row = $self->{dbh}->selectrow_array("select package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, del from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
             if ($row[0]) { # package found
-                my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $del) = @row;
+                my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $del) = @row;
                 
                 # add to combined skipped architecture printout at end
                 if !($skip & $self->{skip}->{$arch}) {
@@ -412,11 +422,12 @@ sub status {
                     $repover = 0;
                     $reporel = 0;
                 }
+                $highmem = $highmem ? " [highmem]" : "";
                 my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
                 $state = 'building' if ($builder && $state eq 'unbuilt');
                 
                 my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
-                my $status = "[$arch] $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
+                my $status = "[$arch]$highmem $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
                 $status .= ", builder=>$builder" if $state eq 'building';
                 
                 # generate list of packages blocking this package from building
@@ -711,7 +722,7 @@ sub update {
             $db_plugrel = $db_plugrel || "0";
             my $vars = `./pkgsource.sh $gitroot $repo $pkg`;
             chomp($vars);
-            my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$buildarch,$noautobuild) = split(/\|/, $vars);
+            my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$buildarch,$noautobuild,$highmem) = split(/\|/, $vars);
             
             # skip a bad source
             next unless (defined $pkgver);
@@ -734,9 +745,9 @@ sub update {
             }
             
             # update abs table regardless of new version
-            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, 0, ?)
-                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = ?, del = 0, importance = ?",
-                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $buildarch, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $buildarch, $importance);
+            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, plugrel, depends, makedepends, git, abs, skip, highmem, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, 0, ?)
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = ?, highmem = ?, del = 0, importance = ?",
+                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $buildarch, $highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $buildarch, $highmem, $importance);
             
             # create work unit package regardless of new version
             `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
@@ -775,7 +786,7 @@ sub update {
             next if ($pkg =~ /.*\-lts$/);   # skip Arch LTS packages
             
             $abslist{$pkg} = 1;
-            my ($db_repo, $db_pkgver, $db_pkgrel, $db_skip, $db_importance) = $self->{dbh}->selectrow_array("select repo, pkgver, pkgrel, skip, importance from abs where package = ?", undef, $pkg);
+            my ($db_repo, $db_pkgver, $db_pkgrel, $db_skip, $db_highmem, $db_importance) = $self->{dbh}->selectrow_array("select repo, pkgver, pkgrel, skip, highmem, importance from abs where package = ?", undef, $pkg);
             my $vars = `./pkgsource.sh $absroot $repo $pkg`;
             chomp($vars);
             my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends) = split(/\|/, $vars);
@@ -814,9 +825,10 @@ sub update {
             
             # update abs table
             my $is_skip = defined $db_skip ? $db_skip : 1;
-            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0, ?)
-                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, del = 0, importance = ?",
-                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $importance);
+            my $is_highmem = defined $db_highmem ? $db_highmem : 1;
+            $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, highmem, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, 0, ?)
+                              on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, highmem = ?, del = 0, importance = ?",
+                              undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $is_highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $is_highmem, $importance);
             
             # new package, different version, update, done = 0
             next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");

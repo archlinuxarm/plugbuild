@@ -188,6 +188,14 @@ sub cb_publicmsg {
                     $q_db->enqueue(['irc', 'force', "armv$arch", $pkg]);
                 }
             }
+            case "!highmem" {
+                my ($pkg) = split(/ /, $arg, 2);
+                if (!$pkg) {
+                    $self->irc_priv_print("usage: !highmem <package>");
+                } else {
+                    $q_db->enqueue(['irc', 'highmem', $pkg]);
+                }
+            }
 			case "!list" {
 				$q_svc->enqueue(['irc', 'list']);
 			}

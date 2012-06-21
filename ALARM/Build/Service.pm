@@ -353,6 +353,7 @@ sub cb_read {
                     }
                     $client->{primary} = $data->{primary};
                     $client->{available} = $data->{available};
+                    $client->{highmem} = $data->{highmem} || 0;
                 }
             }
         }
@@ -624,7 +625,7 @@ sub push_builder {
         if ($action eq "start") {
             next if ($builder->{state} ne 'idle');
             $builder->{state} = 'check';
-            $q_db->enqueue(['svc', 'next', $use_arch, $builder->{cn}]);
+            $q_db->enqueue(['svc', 'next', $use_arch, $builder->{cn}, $builder->{highmem}]);
             $count++;
         } elsif ($action eq "stop") {
             next if ($builder->{state} eq 'idle');
