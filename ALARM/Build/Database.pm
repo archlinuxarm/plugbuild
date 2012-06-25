@@ -405,7 +405,7 @@ sub status {
                 my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $del) = @row;
                 
                 # add to combined skipped architecture printout at end
-                if !($skip & $self->{skip}->{$arch}) {
+                if (!($skip & $self->{skip}->{$arch})) {
                     $skipret .= "$arch, ";
                     last;
                 }
