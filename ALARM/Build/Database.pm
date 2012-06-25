@@ -116,10 +116,10 @@ sub Run {
             }
             case "prune" {
                 my $pkg = @{$orders}[2];
-                $self->{dbh}->do("update armv5 as a inner join abs on (a.id = abs.id) set done = 0, fail = 0 where package = ?", undef, $pkg);
-                $self->{dbh}->do("update armv7 as a inner join abs on (a.id = abs.id) set done = 0, fail = 0 where package = ?", undef, $pkg);
-                $self->pkg_prep('armv5', { pkgbase => $pkg });
-                $self->pkg_prep('armv7', { pkgbase => $pkg });
+                foreach my $arch (keys %{$self->{arch}}) {
+                    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set done = 0, fail = 0 where package = ?", undef, $pkg);
+                    $self->pkg_prep($arch, { pkgbase => $pkg });
+                }
             }
             case "ready" {
                 my $arch = @{$orders}[2];
@@ -312,7 +312,7 @@ sub ready {
             ) as xx", undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
         $ret .= "$arch: $next_pkg[0], ";
     }
-    $ret =~ s/, $//;
+    $ret ~= s/, $//;
     $q_irc->enqueue(['db', 'print', $ret]);
 }
 
@@ -351,7 +351,7 @@ sub ready_detail {
     $ret =~ s/, $//;
     
     $q_irc->enqueue(['db', 'print', "Packages waiting to be built: $cnt"]);
-    $q_irc->enqueue(['db', 'print', "Packages waiting: $ret"]) if $cnt > 0;
+    $q_irc->enqueue(['db', 'print', "Packages waiting: $res"]) if $cnt > 0;
 }
 
 # obsolete: return a count of rows from a table
@@ -375,7 +375,7 @@ sub done {
         my $total = ($self->{dbh}->selectrow_array("select count(*) from abs where skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
         $ret .= "$arch: $count/$total (" . sprintf("%0.2f%%", ($count/$total)*100) . ") | ";
     }
-    $ret =~ s/ | $//;
+    $ret ~= s/ | $//;
     $q_irc->enqueue(['db', 'print', $ret]);
 }
 
@@ -389,7 +389,7 @@ sub failed {
         my $total = ($self->{dbh}->selectrow_array("select count(*) from abs where skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
         $ret .= "$arch: $count/$total (" . sprintf("%0.2f%%", ($count/$total)*100) . ") | ";
     }
-    $ret =~ s/ | $//;
+    $ret ~= s/ | $//;
     $q_irc->enqueue(['db', 'print', $ret]);
 }
 
@@ -405,7 +405,7 @@ sub status {
                 my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $del) = @row;
                 
                 # add to combined skipped architecture printout at end
-                if (!($skip & $self->{skip}->{$arch})) {
+                if !($skip & $self->{skip}->{$arch}) {
                     $skipret .= "$arch, ";
                     last;
                 }
@@ -458,7 +458,7 @@ sub status {
             }
         }
         if ($skipret) {
-            $skipret =~ s/, $//;
+            $skipret =~ /, $//;
             $q_irc->enqueue(['db', 'print', "[status] $package skipped for $skipret"]);
         }
     }
@@ -617,8 +617,9 @@ sub pkg_skip {
     } else {
         $q_irc->enqueue(['db','print',sprintf("%s %s", $op?"Unskipped":"Skipped", $pkg)]);
         if (!$op) {
-            $self->pkg_prep('armv5', { pkgbase => $pkg });
-            $self->pkg_prep('armv7', { pkgbase => $pkg });
+            foreach my $arch (keys %{$self->{arch}}) {
+                $self->pkg_prep($arch, { pkgbase => $pkg });
+            }
         }
     }
 }
@@ -882,8 +883,9 @@ sub update_continue {
     # prune abs table of deleted packages, remove repo files
     foreach my $pkg (keys %dellist) {
         $self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
-        $self->pkg_prep('armv5', { pkgbase => $pkg });
-        $self->pkg_prep('armv7', { pkgbase => $pkg });
+        foreach my $arch (keys %{$self->{arch}}) {
+            $self->pkg_prep($arch, { pkgbase => $pkg });
+        }
     }
     
     # build package_name_provides
