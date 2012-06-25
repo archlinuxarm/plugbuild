@@ -167,6 +167,11 @@ sub cb_verify_cb {
     while (my ($type, $name) = splice @cert_alt, 0, 2) {
         if ($type == Net::SSLeay::GEN_IPADD()) {
             if ($ip eq $name) {
+                if (defined $self->{clientsref}->{"$orgunit/$common"}) {
+                    my $oldhandle = $self->{clientsref}->{"$orgunit/$common"};
+                    $self->cb_error($oldhandle, 1, 'duplicate client disconnect');
+                    $oldhandle->destroy;
+                }
                 $q_irc->enqueue(['svc', 'print', "[SVC] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
                 my %client = ( handle   => $ref,                # connection handle - must be preserved
                                ip       => $ref->{peername},    # dotted quad ip address
@@ -209,7 +214,8 @@ sub cb_starttls {
     my ($self, $handle, $success, $error) = @_;
     
     if ($success) {
-        $handle->rtimeout(0);       # stop auto-destruct
+        $handle->rtimeout(300);     # stop auto-destruct, reset for 5 minute ping timeout
+        $handle->on_rtimeout(sub { $self->cb_error(@_, 1, 'read timeout'); });
         undef $handle->{rbuf_max};  # enable read buffer
         $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });  # set read callback
         return;
