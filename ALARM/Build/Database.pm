@@ -264,8 +264,7 @@ sub rehash {
     foreach my $row (@$rows) {
         my ($arch, $parent, $skip) = @$row;
         $self->{arch}->{$arch} = $parent || $arch;
-        $self->{skip}->{$arch} = $skip || 0;
-        print "DB: rehash: $arch -> $self->{arch}->{$arch}, bitmask $self->{skip}->{$arch}\n";
+        $self->{skip}->{$arch} = int($skip) || 0;
     }
 }
 
@@ -297,7 +296,7 @@ sub ready {
     my $self = shift;
     my $ret = "Packages waiting to be built: ";
     
-    foreach my $arch (keys %{$self->{arch}}) {
+    foreach my $arch (sort keys %{$self->{arch}}) {
         my $parent = $self->{arch}->{$arch};
         my @next_pkg = $self->{dbh}->selectrow_array("select count(*) from (
             select
@@ -331,7 +330,7 @@ sub ready_detail {
     
     my $parent = $self->{arch}->{$arch};
     my $rows = $self->{dbh}->selectall_arrayref("select
-        p.repo, p.package
+        p.repo, p.package, p.depends, p.makedepends
         from
         abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
@@ -348,7 +347,7 @@ sub ready_detail {
 	    $ret .= "$repo/$package, ";
 	    $cnt++;
 	}
-    $ret =~ s/, $//;
+    $ret =~ s/, $// if $cnt > 0;
     
     $q_irc->enqueue(['db', 'print', "Packages waiting to be built: $cnt"]);
     $q_irc->enqueue(['db', 'print', "Packages waiting: $ret"]) if $cnt > 0;
@@ -370,12 +369,12 @@ sub done {
     my $self = shift;
     my $ret = "Successful builds: ";
     
-    foreach my $arch (keys %{$self->{arch}}) {
+    foreach my $arch (sort keys %{$self->{arch}}) {
         my $count = ($self->{dbh}->selectrow_array("select count(*) from abs inner join $arch as a on (a.id = abs.id) where done = 1 and fail = 0 and skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
-        my $total = ($self->{dbh}->selectrow_array("select count(*) from abs where skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
+        my $total = ($self->{dbh}->selectrow_array("select count(*) from abs where skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 1;
         $ret .= "$arch: $count/$total (" . sprintf("%0.2f%%", ($count/$total)*100) . ") | ";
     }
-    $ret =~ s/ | $//;
+    $ret =~ s/ \| $//;
     $q_irc->enqueue(['db', 'print', $ret]);
 }
 
@@ -384,12 +383,12 @@ sub failed {
     my $self = shift;
     my $ret = "Failed builds: ";
     
-    foreach my $arch (keys %{$self->{arch}}) {
+    foreach my $arch (sort keys %{$self->{arch}}) {
         my $count = ($self->{dbh}->selectrow_array("select count(*) from abs inner join $arch as a on (a.id = abs.id) where fail = 1 and skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
-        my $total = ($self->{dbh}->selectrow_array("select count(*) from abs where skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 0;
+        my $total = ($self->{dbh}->selectrow_array("select count(*) from abs where skip & ? > 0 and del = 0", undef, $self->{skip}->{$arch}))[0] || 1;
         $ret .= "$arch: $count/$total (" . sprintf("%0.2f%%", ($count/$total)*100) . ") | ";
     }
-    $ret =~ s/ | $//;
+    $ret =~ s/ \| $//;
     $q_irc->enqueue(['db', 'print', $ret]);
 }
 
@@ -399,7 +398,7 @@ sub status {
     my $skipret = undef;
     
     if (defined($package) && $package ne '') {
-        foreach my $arch (keys %{$self->{arch}}) {
+        foreach my $arch (sort keys %{$self->{arch}}) {
             my @row = $self->{dbh}->selectrow_array("select package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, del from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
             if ($row[0]) { # package found
                 my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $del) = @row;
@@ -407,7 +406,7 @@ sub status {
                 # add to combined skipped architecture printout at end
                 if (!($skip & $self->{skip}->{$arch})) {
                     $skipret .= "$arch, ";
-                    last;
+                    next;
                 }
                 
                 # package removed from repo, print and bail out

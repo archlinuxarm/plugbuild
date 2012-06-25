@@ -102,22 +102,22 @@ sub Run{
 
 sub Service{
     my $self = shift;
-    return new ALARM::Build::Factory('Service',$self->{config}->{server}->{service},$q_irc,$q_db,$q_mir);
+    return new ALARM::Build::Factory('Service',$self->{config}->{server}->{service});
 }
 
 sub Database{
     my $self = shift;
-    return new ALARM::Build::Factory('Database',$self->{config}->{server}->{database},$q_svc,$q_irc,$q_mir)
+    return new ALARM::Build::Factory('Database',$self->{config}->{server}->{database})
 }
 
 sub IRC{
     my $self = shift;
-    return new ALARM::Build::Factory('IRC',$self->{config}->{server}->{irc},$q_svc,$q_db,$q_mir);
+    return new ALARM::Build::Factory('IRC',$self->{config}->{server}->{irc});
 }
 
 sub Mirror{
     my $self = shift;
-    return new ALARM::Build::Factory('Mirror',$self->{config}->{server}->{database},$q_svc,$q_db,$q_irc);
+    return new ALARM::Build::Factory('Mirror',$self->{config}->{server}->{database});
 }
 
 
