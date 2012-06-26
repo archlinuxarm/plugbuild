@@ -828,7 +828,7 @@ sub update {
             
             # update abs table
             my $is_skip = defined $db_skip ? $db_skip : 1;
-            my $is_highmem = defined $db_highmem ? $db_highmem : 1;
+            my $is_highmem = defined $db_highmem ? $db_highmem : 0;
             $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, highmem, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, 0, ?)
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, highmem = ?, del = 0, importance = ?",
                               undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $is_highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $is_highmem, $importance);
