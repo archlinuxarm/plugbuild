@@ -152,6 +152,7 @@ sub cb_starttls {
         }
         $reply{primary} = $config{primary};
         $reply{available} = $config{available};
+        $reply{highmem} = $config{highmem} || 0;
         $handle->push_write(json => \%reply);
         return;
     }
