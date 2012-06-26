@@ -471,7 +471,7 @@ sub cb_queue {
                 foreach my $arch (split(/ /, @{$msg}[2])) {
                     $self->{arch}->{$arch} = $arch;
                 }
-                print "SVC: now serving architectures: " . join(' ', sort keys %{$self->{arch}});
+                print "SVC: now serving architectures: " . join(' ', sort keys %{$self->{arch}}) . "\n";
             }
             
             # repo command for farmer
@@ -562,9 +562,19 @@ sub cb_queue {
                 foreach my $oucn (keys %{$self->{clientsref}}) {
                     next if (!($oucn =~ m/builder\/.*/));
                     my $builder = $self->{clients}->{$self->{clientsref}->{$oucn}};
+                    my @arches;
+                    foreach my $arch (sort keys %{$self->{arch}}) {
+                        if ($arch eq $builder->{primary}) {
+                            push @arches, "\0033$arch\003";
+                        } elsif (grep {$_ eq $arch} @{$builder->{available}}) {
+                            push @arches, "$arch";
+                        } else {
+                            push @arches, "\0034$arch\003";
+                        }
+                    }
                     my $info = $builder->{pkgbase} ? "$builder->{arch}/$builder->{pkgbase} " : '';
                     $info .= $builder->{highmem} ? "[highmem]" : '';
-                    $q_irc->enqueue(['svc', 'print', "[list]  - $builder->{cn}: $builder->{state} $info"]);
+                    $q_irc->enqueue(['svc', 'print', "[list]  - [" . join(' ', @arches) . "] $builder->{cn}: $builder->{state} $info"]);
                 }
             }
             
