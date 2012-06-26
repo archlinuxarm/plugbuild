@@ -266,6 +266,9 @@ sub rehash {
         $self->{arch}->{$arch} = $parent || $arch;
         $self->{skip}->{$arch} = int($skip) || 0;
     }
+    
+    # notify Service of architectures
+    $q_svc->enqueue(['db', 'arches', join(' ', keys %{$self->{arch}})]);
 }
 
 # get next available package to build

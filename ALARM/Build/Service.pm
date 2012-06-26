@@ -465,6 +465,15 @@ sub cb_queue {
                 $handle->push_write(json => $data) if defined $handle;
             }
             
+            # populate our architectures list
+            case "arches" {
+                undef $self->{arch};
+                foreach my $arch (split(/ /, @{$msg}[2])) {
+                    $self->{arch}->{$arch} = $arch;
+                }
+                print "SVC: now serving architectures: " . join(' ', sort keys %{$self->{arch}});
+            }
+            
             # repo command for farmer
             #  - command    - add/insert/remove/delete/move
             #  - architecture
