@@ -553,7 +553,8 @@ sub cb_queue {
                 foreach my $oucn (keys %{$self->{clientsref}}) {
                     next if (!($oucn =~ m/builder\/.*/));
                     my $builder = $self->{clients}->{$self->{clientsref}->{$oucn}};
-                    my $info = $builder->{pkgbase} ? "$builder->{arch}/$builder->{pkgbase}" : '';
+                    my $info = $builder->{pkgbase} ? "$builder->{arch}/$builder->{pkgbase} " : '';
+                    $info .= $builder->{highmem} ? "[highmem]" : '';
                     $q_irc->enqueue(['svc', 'print', "[list]  - $builder->{cn}: $builder->{state} $info"]);
                 }
             }
