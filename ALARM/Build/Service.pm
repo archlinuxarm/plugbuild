@@ -651,6 +651,7 @@ sub push_builder {
         if ($action eq "start") {
             next if ($builder->{state} ne 'idle');
             $builder->{state} = 'check';
+            $builder->{arch} = $use_arch;
             $q_db->enqueue(['svc', 'next', $use_arch, $builder->{cn}, $builder->{highmem}]);
             $count++;
         } elsif ($action eq "stop") {
