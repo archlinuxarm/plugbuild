@@ -215,7 +215,7 @@ sub cb_starttls {
     
     if ($success) {
         $handle->rtimeout(300);     # stop auto-destruct, reset for 5 minute ping timeout
-        $handle->on_rtimeout(sub { $self->cb_error(@_, 1, 'read timeout'); });
+        $handle->on_rtimeout(sub { my $h = shift; $self->cb_error($h, 1, 'read timeout'); $h->destroy; });
         undef $handle->{rbuf_max};  # enable read buffer
         $handle->on_read(sub { $handle->push_read(json => sub { $self->cb_read(@_); }) });  # set read callback
         return;
