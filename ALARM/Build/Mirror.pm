@@ -83,7 +83,7 @@ sub cb_queue {
                 my ($address, $cn) = @{$msg}[2,3];
                 print "Mirror: pushing to $address\n";
                 foreach my $arch ('armv5', 'armv7') {
-                    `rsync -rlt --delete $self->{packaging}->{repo}->{$arch} $address`;
+                    `rsync -4rlt --delete $self->{packaging}->{repo}->{$arch} $address`;
                     if ($? >> 8) {
                         print "Mirror: failed to push $arch to $address: $!\n";
                     } else {
@@ -115,7 +115,7 @@ sub update {
     my $rows = $self->{dbh}->selectall_arrayref("select id, address from mirrors where tier = 1");
     foreach my $row (@$rows) {
         my ($id, $mirror) = @$row;
-        `rsync -rlt --delete $self->{packaging}->{repo}->{$arch} $mirror`;
+        `rsync -4rlt --delete $self->{packaging}->{repo}->{$arch} $mirror`;
         if ($? >> 8) {
             $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $mirror"]);
             $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
