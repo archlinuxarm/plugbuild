@@ -82,7 +82,7 @@ sub cb_queue {
             case "push" {
                 my ($address, $cn) = @{$msg}[2,3];
                 print "Mirror: pushing to $address\n";
-                foreach my $arch ('armv5', 'armv7') {
+                foreach my $arch ('armv5', 'armv6', 'armv7') {
                     `rsync -4rlt --delete $self->{packaging}->{repo}->{$arch} $address`;
                     if ($? >> 8) {
                         print "Mirror: failed to push $arch to $address: $!\n";
