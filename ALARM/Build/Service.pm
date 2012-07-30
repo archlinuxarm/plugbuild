@@ -37,8 +37,6 @@ sub Run {
     $self->{condvar} = AnyEvent->condvar;
     $self->{clients} = \%clients;
     $self->{clientsref} = \%clientsref;
-    $self->{armv5} = 'stop';
-    $self->{armv7} = 'stop';
     
     if ($available->down_nb()) {
         # start-up
@@ -175,7 +173,7 @@ sub cb_verify_cb {
                 $q_irc->enqueue(['svc', 'print', "[SVC] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
                 my %client = ( handle   => $ref,                # connection handle - must be preserved
                                ip       => $ref->{peername},    # dotted quad ip address
-                               ou       => $orgunit,            # OU from cert - currently one of: armv5, armv7
+                               ou       => $orgunit,            # OU from cert - currently one of: builder/admin
                                cn       => $common );           # CN from cert - unique client name (previously builder name)
                 $self->{clients}->{$ref} = \%client;            # replace into instance's clients hash
                 $self->{clientsref}->{"$orgunit/$common"} = $ref;
@@ -465,11 +463,12 @@ sub cb_queue {
                 $handle->push_write(json => $data) if defined $handle;
             }
             
-            # populate our architectures list
+            # populate our architectures list, set status
             case "arches" {
                 undef $self->{arch};
                 foreach my $arch (split(/ /, @{$msg}[2])) {
                     $self->{arch}->{$arch} = $arch;
+                    $self->{$arch} = 'stop' unless defined $self-{$arch};
                 }
                 print "SVC: now serving architectures: " . join(' ', sort keys %{$self->{arch}}) . "\n";
             }
@@ -581,13 +580,14 @@ sub cb_queue {
             # start or stop building
             case ["start","stop"] {
                 my $what = @{$msg}[2];
-                if ($what eq '5' || $what eq '7') {
+                if (defined $self->{"armv$what"}) {
                     $self->{"armv$what"} = $order;
                     $self->push_builder($order, "armv$what");
                 } elsif ($what eq 'all') {
-                    $self->{armv5} = $order;
-                    $self->{armv7} = $order;
-                    $self->push_builder($order);
+                    foreach my $arch (sort keys %{$self->{arch}}) {
+                        $self->{$arch} = $order;
+                        $self->push_builder($order);
+                    }
                 }
             }
             
@@ -684,7 +684,7 @@ sub check_complete {
     }
     if ($total && $count == $total) {
         $q_irc->enqueue(['svc','print',"[complete] found no package to issue for $arch, mirroring"]);
-        $q_mir->enqueue(['svc', 'update', $arch]);
+        $q_mir->enqueue(['svc', 'update', $arch]) unless ($arch eq "armv6");
         $self->{$arch} = 'stop';
     }
 }
