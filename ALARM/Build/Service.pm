@@ -468,7 +468,7 @@ sub cb_queue {
                 undef $self->{arch};
                 foreach my $arch (split(/ /, @{$msg}[2])) {
                     $self->{arch}->{$arch} = $arch;
-                    $self->{$arch} = 'stop' unless defined $self-{$arch};
+                    $self->{$arch} = 'stop' unless defined $self->{$arch};
                 }
                 print "SVC: now serving architectures: " . join(' ', sort keys %{$self->{arch}}) . "\n";
             }
