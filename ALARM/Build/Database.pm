@@ -253,8 +253,7 @@ sub disconnect {
 #   skip bitmasks in use:
 #    - armv5:  0000 0011 ( 3) - all | v5
 #    - armv7:  0000 0101 ( 5) - all | v7
-#    - armv6:  0001 0000 (16) - v6+vfp sub-arch only
-#    - armv7n: 0010 0000 (32) - v7h+neon sub-arch only
+#    - armv6:  0001 0000 (17) - all | v6
 sub rehash {
     my $self = shift;
     
@@ -274,7 +273,6 @@ sub rehash {
 # get next available package to build
 sub get_next_package {
     my ($self, $arch, $builder, $highmem) = @_;
-    my $parent = $self->{arch}->{$arch};
     my $memstr = $highmem?"":"and p.highmem = 0";
     if (defined($self->{dbh})) {
     	$self->{dbh}->do("update $arch set builder = null where builder = ?", undef, $builder);
@@ -282,11 +280,11 @@ sub get_next_package {
             p.repo, p.package, p.depends, p.makedepends
             from abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select dp.package as id, case when skip & ? then max(a.done) else max(parent.done) end as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) inner join $parent as parent on (parent.id = pn.package) inner join abs on (abs.id = a.id) group by id, name) as d on (d.id = p.id)
+            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
             where p.skip & ? > 0 and p.del = 0 $memstr
             group by p.id
             having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1",
-            undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
+            undef, $self->{skip}->{$arch});
         return undef if (!$next_pkg[0]);
         return \@next_pkg;
     } else {
@@ -307,11 +305,11 @@ sub ready {
                 from
                 abs as p
                     join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    left outer join (select dp.package as id, case when skip & ? then max(a.done) else max(parent.done) end as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) inner join $parent as parent on (parent.id = pn.package) inner join abs on (abs.id = a.id) group by id, name) as d on (d.id = p.id)
+                    left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
                 where p.skip & ? > 0 and p.del = 0  
                 group by p.id
                 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
-            ) as xx", undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
+            ) as xx", undef, $self->{skip}->{$arch});
         $ret .= "$arch: $next_pkg[0], ";
     }
     $ret =~ s/, $//;
@@ -337,11 +335,11 @@ sub ready_detail {
         from
         abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select dp.package as id, case when skip & ? then max(a.done) else max(parent.done) end as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) inner join $parent as parent on (parent.id = pn.package) inner join abs on (abs.id = a.id) group by id, name) as d on (d.id = p.id)
+            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
         where p.skip & ? > 0 and p.del = 0
         group by p.id
         having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance",
-        undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
+        undef, $self->{skip}->{$arch});
     
 	my $ret = undef;
 	my $cnt = 0;
