@@ -498,7 +498,7 @@ sub cb_queue {
                     next if (!($oucn =~ m/builder\/.*/));
                     my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
                     next unless $builder->{state} eq 'idle';
-                    if (ref($builder->{available}) eq 'ARRAY' ? grep {$_ eq $data->{arch}} @{$builder->{available}} : $builder->{available} eq $data->{arch}) {
+                    if (grep {$_ eq $data->{arch}} @{$builder->{available}}) {
                         $q_irc->enqueue(['svc','print',"[force] builder: $builder->{cn} ($data->{arch}) - package: $data->{pkgbase}"]);
                         print "   -> next for $builder->{cn} ($data->{arch}): $data->{pkgbase}\n";
                         $builder->{handle}->push_write(json => $data);
