@@ -229,6 +229,9 @@ sub cb_publicmsg {
             case "!refresh" {
                 $q_mir->enqueue(['irc', 'refresh']);
             }
+            case "!rehash" {
+                $q_db->enqueue(['irc', 'rehash']);
+            }
             case "!review" {
                 $q_db->enqueue(['irc','review']);
             }
