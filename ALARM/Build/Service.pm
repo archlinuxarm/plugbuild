@@ -552,8 +552,10 @@ sub cb_queue {
                                 $found = 1;
                                 next;
                             }
-                            # push for next arch if it's started
-                            $self->push_builder('start', $test_arch) if ($self->{$test_arch} eq 'start');
+                            if ($self->{$test_arch} eq 'start') {                                   # push for next arch if it's started
+                                $self->push_builder('start', $test_arch);
+                                last;
+                            }
                         }
                     }
                 }
@@ -646,7 +648,7 @@ sub push_builder {
         
         my $use_arch = $builder->{primary};     # set to use builder's primary arch
         if (defined $arch) {                    # though if we're starting only a specific arch..
-            if (ref($builder->{available}) eq 'ARRAY' ? grep {$_ eq $arch} @{$builder->{available}} : $builder->{available} eq $arch) {
+            if (grep {$_ eq $arch} @{$builder->{available}}) {
                 $use_arch = $arch;              # and it's available, so we can use it
             } else {
                 next;                           # unless it isn't, so we check the next builder
