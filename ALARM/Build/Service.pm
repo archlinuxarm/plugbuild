@@ -549,7 +549,7 @@ sub cb_queue {
                             next if ($test_arch eq $builder->{primary});                            # ignore primary arch, we've tested it if we got here
                             next if ($test_arch ne $arch && !$found);                               # skip arches until we reach the current arch in available list
                             if ($test_arch eq $arch)  {                                             # found last tested arch, skip to next
-                                found = 1;
+                                $found = 1;
                                 next;
                             }
                             # push for next arch if it's started
