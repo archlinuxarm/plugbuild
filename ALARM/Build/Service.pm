@@ -691,7 +691,7 @@ sub check_complete {
     }
     if ($total && $count == $total) {
         $q_irc->enqueue(['svc','print',"[complete] found no package to issue for $arch, mirroring"]);
-        $q_mir->enqueue(['svc', 'update', $arch]) unless ($arch eq "armv6");
+        $q_mir->enqueue(['svc', 'update', $arch]);
         $self->{$arch} = 'stop';
     }
 }

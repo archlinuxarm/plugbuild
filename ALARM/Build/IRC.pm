@@ -254,7 +254,7 @@ sub cb_publicmsg {
 				if (my ($what) = split(/ /, $arg, 2)) {
 					$q_svc->enqueue(['irc', $trigger, $what]);
 				} else {
-					$self->irc_priv_print("usage: $trigger <all|5|7>");
+					$self->irc_priv_print("usage: $trigger <all|5|6|7>");
 				}
 			}
             case "!status" {
@@ -266,11 +266,12 @@ sub cb_publicmsg {
                 }
             }
 			case "!sync" {
-                if ($arg && ($arg eq '5' || $arg eq '7')) {
+                if ($arg && ($arg eq '5' || $arg eq '6' || $arg eq '7')) {
                     $q_mir->enqueue(['irc', 'update', "armv$arg"]);
                     $self->irc_priv_print("[sync] queued armv$arg mirror update");
                 } else {
     				$q_mir->enqueue(['irc', 'update', 'armv5']);
+                    $q_mir->enqueue(['irc', 'update', 'armv6']);
     				$q_mir->enqueue(['irc', 'update', 'armv7']);
     				$self->irc_priv_print("[sync] queued mirror updates");
                 }
