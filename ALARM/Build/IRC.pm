@@ -182,10 +182,10 @@ sub cb_publicmsg {
             }
             case "!force" {
                 my ($arch, $pkg) = split(/ /, $arg, 3);
-                if (!$pkg || !$arch || ($arch ne "5" && $arch ne "7")) {
-                    $self->irc_priv_print("usage: !force <5|7> <package>");
+                if (!$arch || !$pkg) {
+                    $self->irc_priv_print("usage: !force <arch> <package>");
                 } else {
-                    $q_db->enqueue(['irc', 'force', "armv$arch", $pkg]);
+                    $q_db->enqueue(['irc', 'force', $arch, $pkg]);
                 }
             }
             case "!highmem" {
@@ -228,6 +228,9 @@ sub cb_publicmsg {
             }
             case "!refresh" {
                 $q_mir->enqueue(['irc', 'refresh']);
+            }
+            case "!rehash" {
+                $q_db->enqueue(['irc', 'rehash']);
             }
             case "!review" {
                 $q_db->enqueue(['irc','review']);

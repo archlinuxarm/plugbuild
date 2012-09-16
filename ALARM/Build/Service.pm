@@ -498,7 +498,7 @@ sub cb_queue {
                     next if (!($oucn =~ m/builder\/.*/));
                     my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
                     next unless $builder->{state} eq 'idle';
-                    if (ref($builder->{available}) eq 'ARRAY' ? grep {$_ eq $data->{arch}} @{$builder->{available}} : $builder->{available} eq $data->{arch}) {
+                    if (grep {$_ eq $data->{arch}} @{$builder->{available}}) {
                         $q_irc->enqueue(['svc','print',"[force] builder: $builder->{cn} ($data->{arch}) - package: $data->{pkgbase}"]);
                         print "   -> next for $builder->{cn} ($data->{arch}): $data->{pkgbase}\n";
                         $builder->{handle}->push_write(json => $data);
@@ -543,10 +543,17 @@ sub cb_queue {
                     $self->check_complete($arch) if ($self->{$arch} eq 'start');                    # check if all builders are done on this arch
                     if ($builder->{primary} ne $arch && $self->{$builder->{primary}} eq 'start') {  # check if builder's primary is still active
                         $self->push_builder('start', $builder->{primary});                          #  ..and push for a new package
-                    } elsif (ref($builder->{available}) eq 'ARRAY') {                               # otherwise check if an available arch is active
-                        foreach my $test_arch (grep {$_ ne $arch} @{$builder->{available}}) {
-                            if ($self->{$test_arch} eq 'start') {
-                                $self->push_builder('start', $test_arch);                           #  ..and push for a new package
+                    } else {                                                                        # otherwise check if an available arch is active
+                        my $found = ($builder->{primary} eq $arch) ? 1 : 0;
+                        foreach my $test_arch (@{$builder->{available}}) {
+                            next if ($test_arch eq $builder->{primary});                            # ignore primary arch, we've tested it if we got here
+                            next if ($test_arch ne $arch && !$found);                               # skip arches until we reach the current arch in available list
+                            if ($test_arch eq $arch)  {                                             # found last tested arch, skip to next
+                                $found = 1;
+                                next;
+                            }
+                            if ($self->{$test_arch} eq 'start') {                                   # push for next arch if it's started
+                                $self->push_builder('start', $test_arch);
                                 last;
                             }
                         }
@@ -586,8 +593,8 @@ sub cb_queue {
                 } elsif ($what eq 'all') {
                     foreach my $arch (sort keys %{$self->{arch}}) {
                         $self->{$arch} = $order;
-                        $self->push_builder($order);
                     }
+                    $self->push_builder($order);
                 }
             }
             
@@ -641,7 +648,7 @@ sub push_builder {
         
         my $use_arch = $builder->{primary};     # set to use builder's primary arch
         if (defined $arch) {                    # though if we're starting only a specific arch..
-            if (ref($builder->{available}) eq 'ARRAY' ? grep {$_ eq $arch} @{$builder->{available}} : $builder->{available} eq $arch) {
+            if (grep {$_ eq $arch} @{$builder->{available}}) {
                 $use_arch = $arch;              # and it's available, so we can use it
             } else {
                 next;                           # unless it isn't, so we check the next builder

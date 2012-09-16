@@ -87,6 +87,13 @@ sub Run {
             }
             case "force" {
                 my ($arch, $pkg) = @{$orders}[2,3];
+                if (!$self->{arch}->{$arch}) {  # determine if we were given shorthand arch string or not
+                    $arch = "armv$arch";
+                    if (!$self->{arch}->{$arch}) {
+                        $q_irc->enqueue(['db', 'print', "usage: !force <arch> <package>"]);
+                        return;
+                    }
+                }
                 my @force = $self->{dbh}->selectrow_array("select done, repo from $arch as a inner join abs on (a.id = abs.id) where package = ?", undef, $pkg);
                 if (!defined $force[0]) {
                     $q_irc->enqueue(['db', 'print', "[force] Package $pkg not found."]);
