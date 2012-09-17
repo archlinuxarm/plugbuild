@@ -134,6 +134,7 @@ sub update {
 sub tier2 {
     my ($self, $arch, $sync) = @_;
     $arch = "arm" if $arch eq "armv5";
+    $arch = "armv6h" if $arch eq "armv6";
     $arch = "armv7h" if $arch eq "armv7";
     
     my $rows = $self->{dbh}->selectall_arrayref("select id, domain from mirrors where tier = 2");
