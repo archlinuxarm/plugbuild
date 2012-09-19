@@ -540,22 +540,17 @@ sub cb_queue {
                     $builder->{state} = 'idle';
                     undef $builder->{pkgbase};
                     undef $builder->{arch};
-                    $self->check_complete($arch) if ($self->{$arch} eq 'start');                    # check if all builders are done on this arch
-                    if ($builder->{primary} ne $arch && $self->{$builder->{primary}} eq 'start') {  # check if builder's primary is still active
-                        $self->push_builder('start', $builder->{primary});                          #  ..and push for a new package
-                    } else {                                                                        # otherwise check if an available arch is active
-                        my $found = ($builder->{primary} eq $arch) ? 1 : 0;
-                        foreach my $test_arch (@{$builder->{available}}) {
-                            next if ($test_arch eq $builder->{primary});                            # ignore primary arch, we've tested it if we got here
-                            next if ($test_arch ne $arch && !$found);                               # skip arches until we reach the current arch in available list
-                            if ($test_arch eq $arch)  {                                             # found last tested arch, skip to next
-                                $found = 1;
-                                next;
-                            }
-                            if ($self->{$test_arch} eq 'start') {                                   # push for next arch if it's started
-                                $self->push_builder('start', $test_arch);
-                                last;
-                            }
+                    $self->check_complete($arch) if ($self->{$arch} eq 'start');    # check if all builders are done on this arch
+                    my $found = 0;
+                    foreach my $test_arch (@{$builder->{available}}) {              # walk available list
+                        next if ($test_arch ne $arch && !$found);                   # skip arches until we reach the current arch in available list
+                        if ($test_arch eq $arch)  {                                 # found last tested arch, skip to next
+                            $found = 1;
+                            next;
+                        }
+                        if ($self->{$test_arch} eq 'start') {                       # push for next arch if it's started
+                            $self->push_builder('start', $test_arch);
+                            last;
                         }
                     }
                 }
