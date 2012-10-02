@@ -767,7 +767,7 @@ sub poll {
                 $repo = "extra";
             } elsif (-d "$path/community-i686") {
                 $repo = "community";
-            } else {                # something wierd, drop from queue
+            } else {                # something weird, drop from queue
                 print "[pool] $pkg from $type has no repo, dropping from queue\n";
                 $self->{dbh}->do("delete from queue where path = ?", undef, $path);
                 next;
@@ -823,11 +823,11 @@ sub process {
     my $rows = $self->{dbh}->selectall_arrayref("select path, package, pkgver, pkgrel from queue where ref = 1 and hold = 1");
     foreach my $row (@$rows) {
         my ($path, $pkg, $pkgver, $pkgrel) = @$row;
-        my ($git_path, $git_pkg, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, pkgver, pkgrel from queue where type = 'git' and package = ? and ref = 1", undef, $pkg);
+        my ($git_path, $git_pkg, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, pkgver, pkgrel from queue where type = 'git' and package = ?", undef, $pkg);
         if (defined $git_pkg) {
             print "[process] matched git package found\n";
             
-            # ALARM pkgrel bumps are tracked as added fractional numbers, strip that to determine actual differences
+            # ALARM pkgrel bumps are tracked as fractional pkgrel numbers, strip that to determine actual differences
             my $git_pkgrel_stripped = $git_pkgrel;
             $git_pkgrel_stripped =~ s/\.+.*//;
             
