@@ -588,15 +588,21 @@ sub cb_queue {
             # start or stop building
             case ["start","stop"] {
                 my $what = @{$msg}[2];
-                if (defined $self->{"armv$what"}) {
-                    $self->{"armv$what"} = $order;
-                    $self->push_builder($order, "armv$what") if ($from eq 'irc');
-                } elsif ($what eq 'all') {
+                if (!defined $self->{$what} && $what ne 'all') {    # determine if we were given shorthand arch string or not
+                    $what = "armv$what";
+                    if (!defined $self->{$what}) {
+                        $q_irc->enqueue(['db', 'print', "$order <all|5|6|7>"]);
+                    }
+                }
+                if ($what eq 'all') {
                     foreach my $arch (sort keys %{$self->{arch}}) {
                         $self->{$arch} = $order;
                     }
-                    $self->push_builder($order);
-                }
+                    $self->push_builder($order) if ($from eq 'irc');
+                } else {
+                    $self->{$what} = $order;
+                    $self->push_builder($order, $what) if ($from eq 'irc');
+                }                    
             }
             
             # tell builder(s) to run idle maintenance now

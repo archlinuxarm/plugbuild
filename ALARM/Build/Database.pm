@@ -260,7 +260,7 @@ sub disconnect {
 #   skip bitmasks in use:
 #    - armv5:  0000 0011 ( 3) - all | v5
 #    - armv7:  0000 0101 ( 5) - all | v7
-#    - armv6:  0001 0000 (17) - all | v6
+#    - armv6:  0001 0001 (17) - all | v6
 sub rehash {
     my $self = shift;
     
@@ -815,6 +815,10 @@ sub process {
                      'aur'          => 40,
                      'alarm'        => 50 );
     
+    # halt all architectures
+    #$q_svc->enqueue(['db', 'stop', 'all']);
+    print "[process] halting all architectures\n";
+    
     # match holds to git updates, delete upstream holds if satisfied in overlay
     my $rows = $self->{dbh}->selectall_arrayref("select path, package, pkgver, pkgrel from queue where ref = 1 and hold = 1");
     foreach my $row (@$rows) {
@@ -908,10 +912,30 @@ sub process {
         $self->{dbh}->do("delete from queue where path = ?", undef, $path);
     }
     
-    # check holds against arches
-    # stop arches with holds
-    # start arches with packages ready that don't have holds
+    # find holds against architectures, start those without
+    my $total = 0;
+    my $rows = $self->{dbh}->selectall_arrayref("select skip from queue where ref = 1 and hold = 1");
+    foreach my $row (@$rows) {
+        my ($skip) = @$row;
+        $total |= int($skip);
+    }
+    foreach my $arch (keys %{$self->{arch}}) {
+        next if ($self->{skip}->{$arch} & $total);
+        my ($ready) = $self->{dbh}->selectrow_array("select count(*) from (
+            select p.repo, p.package, p.depends, p.makedepends from abs as p
+            join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+            where p.skip & ? > 0 and p.del = 0 group by p.id having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
+            ) as xx", undef, $self->{skip}->{$arch});
+        if ($ready > 0) {
+            #$q_svc->enqueue(['db', 'start', $arch]);
+            print "[process] starting $arch\n";
+        }
+    }
+    
     # push start
+    #$q_svc->enqueue(['db', 'push']);
+    print "[process] starting available builders\n";
 }
 
 # update database with new packages from git and ABS
