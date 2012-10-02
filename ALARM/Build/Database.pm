@@ -698,6 +698,119 @@ sub pkg_select {
     }
 }
 
+# poll git for new packages
+sub poll {
+    my $self = shift;
+    
+    # parse sources
+    my $repos = $self->{dbh}->selectall_arrayref("select id, type, root, sha from sources");
+    foreach my $repo (@$repos) {
+        my ($id, $type, $root, $sha) = @$repo;
+        my @paths;
+        
+        # pull, get HEAD sha
+        my $newsha = `git --git-dir=$root/.git pull -q && git --git-dir=$root/.git rev-parse HEAD`;
+        chomp $newsha;
+        
+        # get changed directories
+        if ($type eq 'git') {       # git overlay: repo/package
+            @paths = `git --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-2 | uniq`;
+        } elsif ($type eq 'abs') {  # upstream: package
+            @paths = `git --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f1 | uniq`;
+        } else {                    # skip bad entries
+            $q_irc->enqueue(['db','print',"[poll] Unknown source ($id) type: $type, root: $root"]);
+            next;
+        }
+        
+        # queue new directory changes (ref=0), or update count reference (ref=2+)
+        foreach my $path (@paths) {
+            my $pkg;
+            my $repo = '';
+            chomp $path;
+            if ($type eq 'git') {   # get repo for git overlay packages since it's easy now
+                ($repo, $pkg) = (split('/', $path))[0];
+                next if (!$pkg);    # not a package update, skip
+            } elsif ($type eq 'abs') {
+                $pkg = $path;
+            }
+            $self->{dbh}->do("insert into queue (type, path, package, repo) values (?, ?, ?, ?)
+                              on duplicate key update ref = ref+1",
+                              undef, $type, "$root/$path", $pkg, $repo);
+        }
+        
+        # update latest HEAD sha in sources
+        $self->{dbh}->do("update sources set sha = ? where id = ?", undef, $newsha, $id);
+    }
+    
+    # process unchanged queue items
+    $self->process();
+    
+    # check changes
+    my $changes = $self->{dbh}->selectall_arrayref("select type, path, ref, package, repo from queue where ref != 1");
+    foreach my $change (@$changes) {
+        my ($type, $path, $ref, $pkg, $repo) = @$change;
+        
+        if (! -d $path) {           # directory doesn't exist, flag removed
+            $self->{dbh}->do("update queue set del = 1 where path = ?", undef, $path);
+            next;
+        }
+        if ($path =~ /.*\-lts#/) {  # skip LTS packages, remove from queue
+            $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+            next; 
+        }
+        
+        if ($type eq 'abs') {       # determine upstream repo
+            if (-d "$path/core-i686") {
+                $repo = "core";
+            } elsif (-d "$path/extra-i686") {
+                $repo = "extra";
+            } elsif (-d "$path/community-i686") {
+                $repo = "community";
+            } else {                # something wierd, drop from queue
+                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+                next;
+            }
+        }
+        
+        # source PKGBUILD
+        my $extra = ($type eq 'abs') ? "/$repo-i686" : '';
+        my $vars = `./gitsource.sh $path$extra`;
+        chomp($vars);
+        if ($vars eq "NULL") {      # skip non-existent/malformed packages
+            $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+            next;
+        }
+        my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$buildarch,$noautobuild,$highmem) = split(/\|/, $vars);
+        
+        # warn about git overlay being different
+        if ($type eq 'abs') {
+            my ($db_pkgver, $db_pkgrel, $db_git, $db_override) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, git, override from abs where package = ?", undef, $pkg);
+            if (defined $db_pkgrel && $db_git == 1 && $db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
+                $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $repo/$pkg is different in git, git = $pkgver-$pkgrel, abs = $db_pkgver-$db_pkgrel"]);
+            }
+        }
+        # update queue data
+        $self->{dbh}->do("update queue set ref = 1, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, skip = ?, noautobuild = ?, highmem = ? where path = ?",
+                         undef, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $buildarch, $noautobuild, $highmem, $path);
+    }
+}
+
+# process queued packages
+sub process {
+    my $self = shift;
+    my %priority = ( 'core'         => 10,   # default importance (package selection priority)
+                     'extra'        => 20,
+                     'community'    => 30,
+                     'aur'          => 40,
+                     'alarm'        => 50 );
+    
+    my $changes = $self->{dbh}->selectall_arrayref("select * from queue where ref = 1");
+    foreach my $change (@$changes) {
+        my ($type,$path,$ref,$hold,$del,$package,$repo,$pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$skip,$noautobuild,$highmem) = @$change;
+        
+    }
+}
+
 # update database with new packages from git and ABS
 sub update {
     my $self = shift;
