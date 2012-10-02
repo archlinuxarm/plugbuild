@@ -115,6 +115,15 @@ sub Run {
             case "info" {
                 $self->pkg_info(@{$orders}[2]);
             }
+            case "override" {
+                my ($pkg) = @{$orders}[2];
+                my $rows = $self->{dbh}->do("update abs set override = override ^ 1 where package = ?", undef, $pkg);
+                if ($rows < 1) {
+                    $q_irc->enqueue(['db', 'print', "[override] No such package named $pkg"]);
+                } else {
+                    $q_irc->enqueue(['db', 'print', "[override] Toggled $pkg"]);
+                }
+            }
             case "percent_done" {
                 $self->done();
             }
@@ -407,9 +416,9 @@ sub status {
     
     if (defined($package) && $package ne '') {
         foreach my $arch (sort keys %{$self->{arch}}) {
-            my @row = $self->{dbh}->selectrow_array("select package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, del from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
+            my @row = $self->{dbh}->selectrow_array("select package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, override, del from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
             if ($row[0]) { # package found
-                my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $del) = @row;
+                my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $override, $del) = @row;
                 
                 # add to combined skipped architecture printout at end
                 if (!($skip & $self->{skip}->{$arch})) {
@@ -430,11 +439,12 @@ sub status {
                     $reporel = 0;
                 }
                 $highmem = $highmem ? " [highmem]" : "";
+                $override = $override ? " [override]" : "";
                 my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
                 $state = 'building' if ($builder && $state eq 'unbuilt');
                 
                 my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
-                my $status = "[$arch]$highmem $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
+                my $status = "[$arch]$highmem$override $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
                 $status .= ", builder=>$builder" if $state eq 'building';
                 
                 # generate list of packages blocking this package from building
@@ -761,11 +771,11 @@ sub poll {
         }
         
         if ($type eq 'abs') {       # determine upstream repo
-            if (-d "$path/core-i686") {
+            if (-d "$path/repos/core-i686") {
                 $repo = "core";
-            } elsif (-d "$path/extra-i686") {
+            } elsif (-d "$path/repos/extra-i686") {
                 $repo = "extra";
-            } elsif (-d "$path/community-i686") {
+            } elsif (-d "$path/repos/community-i686") {
                 $repo = "community";
             } else {                # something weird, drop from queue
                 print "[pool] $pkg from $type has no repo, dropping from queue\n";
@@ -775,7 +785,7 @@ sub poll {
         }
         
         # source PKGBUILD
-        my $extra = ($type eq 'abs') ? "/$repo-i686" : '';
+        my $extra = ($type eq 'abs') ? "/repos/$repo-i686" : '';
         my $vars = `./gitsource.sh $path$extra`;
         chomp($vars);
         if ($vars eq "NULL") {      # skip non-existent/malformed packages
@@ -837,6 +847,7 @@ sub process {
             } else {
                 print "[process] removing upstream package $pkg since overlay is good\n";
                 $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+                $self->{dbh}->do("update queue set ref = 1 where path = ?, undef, $git_path);
             }
         }
     }
@@ -914,7 +925,7 @@ sub process {
     
     # find holds against architectures, start those without
     my $total = 0;
-    my $rows = $self->{dbh}->selectall_arrayref("select skip from queue where ref = 1 and hold = 1");
+    $rows = $self->{dbh}->selectall_arrayref("select skip from queue where ref = 1 and hold = 1");
     foreach my $row (@$rows) {
         my ($skip) = @$row;
         $total |= int($skip);
