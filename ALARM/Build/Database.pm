@@ -749,6 +749,7 @@ sub poll {
     my $changes = $self->{dbh}->selectall_arrayref("select type, path, ref, package, repo from queue where ref != 1");
     foreach my $change (@$changes) {
         my ($type, $path, $ref, $pkg, $repo) = @$change;
+        my $hold = 0;
         
         if (! -d $path) {           # directory doesn't exist, flag removed
             $self->{dbh}->do("update queue set del = 1 where path = ?", undef, $path);
@@ -767,6 +768,7 @@ sub poll {
             } elsif (-d "$path/community-i686") {
                 $repo = "community";
             } else {                # something wierd, drop from queue
+                print "[pool] $pkg from $type has no repo, dropping from queue\n";
                 $self->{dbh}->do("delete from queue where path = ?", undef, $path);
                 next;
             }
@@ -782,33 +784,134 @@ sub poll {
         }
         my ($pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$buildarch,$noautobuild,$highmem) = split(/\|/, $vars);
         
-        # warn about git overlay being different
+        # warn about git overlay being different and flag hold, or warn of override and remove from queue
         if ($type eq 'abs') {
             my ($db_pkgver, $db_pkgrel, $db_git, $db_override) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, git, override from abs where package = ?", undef, $pkg);
             if (defined $db_pkgrel && $db_git == 1 && $db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
                 $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $repo/$pkg is different in git, git = $pkgver-$pkgrel, abs = $db_pkgver-$db_pkgrel"]);
+                $hold = 1;
+            } elsif (defined $db_pkgrel && $db_git == 1 && $db_override == 1) {
+                $q_irc->enqueue(['db', 'print', "[poll] Override: $repo/$pkg: git = $pkgver-$pkgrel, abs = $db_pkgver-$db_pkgrel"]);
+                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+                next;
             }
         }
         # update queue data
-        $self->{dbh}->do("update queue set ref = 1, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, skip = ?, noautobuild = ?, highmem = ? where path = ?",
-                         undef, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $buildarch, $noautobuild, $highmem, $path);
+        $self->{dbh}->do("update queue set ref = 1, hold = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, skip = ?, noautobuild = ?, highmem = ? where path = ?",
+                         undef, $hold, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $buildarch, $noautobuild, $highmem, $path);
     }
+    
+    # bring queue items ref > 1 back to 1 for possible processing next round
+    $self->{dbh}->do("update queue set ref = 1 where ref > 1");
 }
 
 # process queued packages
 sub process {
     my $self = shift;
-    my %priority = ( 'core'         => 10,   # default importance (package selection priority)
+    my $workroot = $self->{packaging}->{workroot};
+    my %priority = ( 'core'         => 10,  # default importance (package selection priority)
                      'extra'        => 20,
                      'community'    => 30,
                      'aur'          => 40,
                      'alarm'        => 50 );
     
-    my $changes = $self->{dbh}->selectall_arrayref("select * from queue where ref = 1");
-    foreach my $change (@$changes) {
-        my ($type,$path,$ref,$hold,$del,$package,$repo,$pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$skip,$noautobuild,$highmem) = @$change;
-        
+    # match holds to git updates, delete upstream holds if satisfied in overlay
+    my $rows = $self->{dbh}->selectall_arrayref("select path, package, pkgver, pkgrel from queue where ref = 1 and hold = 1");
+    foreach my $row (@$rows) {
+        my ($path, $pkg, $pkgver, $pkgrel) = @$row;
+        my ($git_path, $git_pkg, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, pkgver, pkgrel from queue where type = 'git' and package = ? and ref = 1", undef, $pkg);
+        if (defined $git_pkg) {
+            print "[process] matched git package found\n";
+            
+            # ALARM pkgrel bumps are tracked as added fractional numbers, strip that to determine actual differences
+            my $git_pkgrel_stripped = $git_pkgrel;
+            $git_pkgrel_stripped =~ s/\.+.*//;
+            
+            if ("$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel_stripped") {
+                $q_irc->enqueue(['db', 'print', "[process] Holding overlay on wrong version for $pkg, git = $git_pkgver-$git_pkgrel_stripped, abs = $pkgver-$pkgrel"]);
+                $self->{dbh}->do("update queue set hold = 1 where path = ?", undef, $git_path);
+            } else {
+                print "[process] removing upstream package $pkg since overlay is good\n";
+                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+            }
+        }
     }
+    
+    # process non-holds into abs and arch tables
+    $rows = $self->{dbh}->selectall_arrayref("select * from queue where ref = 1 and hold = 0");
+    foreach my $row (@$rows) {
+        my ($type,$path,$ref,$hold,$del,$pkg,$repo,$pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$skip,$noautobuild,$highmem) = @$row;
+        
+        # handle deleted package
+        if (del == 1) {
+            if ($type eq 'abs') {
+                $self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+                foreach my $arch (keys %{$self->{arch}}) {
+                    #$self->pkg_prep($arch, { pkgbase => $pkg });
+                    print "[process] deleting $arch/$pkg\n";
+                }
+            } elsif ($type eq 'git') {
+                # determine if package exists upstream
+                # insert into queue for processing
+                # or delete package like above
+            }
+            $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+            next;
+        }
+        
+        # update abs and arch tables if newer
+        my ($db_id, $db_repo, $db_pkgver, $db_pkgrel, $db_skip, $db_highmem, $db_importance) = $self->{dbh}->selectrow_array("select id, repo, pkgver, pkgrel, skip, highmem, importance from abs where package = ?", undef, $pkg);
+        my $importance = $priority{$repo};  # set importance
+        
+        # create work unit here for non-skipped and new packages, to repackage abs changes without ver-rel bump
+        if ((defined $db_skip && $db_skip > 0) || (! defined $db_skip)) {
+            `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
+        }
+        
+        # relocate package if repo has changed
+        if (defined $db_repo && $db_repo ne $repo) {
+            print "[process] relocating $db_repo/$pkg to $repo\n";
+            #$self->pkg_relocate($pkg, $repo);
+        }
+        
+        # update abs table
+        my $is_skip = $type eq 'git' ? $skip : defined $db_skip ? $db_skip : 1;
+        my $is_highmem = $type eq 'git' ? $highmem : defined $db_highmem ? $db_highmem : 0;
+        my $is_done = $noautobuild ? 1 : 0; # noautobuild set, assume built, done = 1
+        
+        #$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, highmem, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, 0, ?)
+        #                  on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, highmem = ?, del = 0, importance = ?",
+        #                  undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $is_highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $is_highmem, $importance);
+        print "[process] update abs: $repo/$pkg $pkgver-$pkgrel, skip: $is_skip, highmem: $is_highmem, importance: $importance\n";
+        
+        # new package, different version, update, done = 0
+        if (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
+            print "[process] $repo/$pkg to $pkgver-$pkgrel\n";
+            
+            # update architecture tables
+            foreach my $arch (keys %{$self->{arch}}) {
+                #$self->{dbh}->do("insert into $arch (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
+                print "[process] setting done = 0, fail = 0 on $arch table\n";
+            }
+        } else {
+            foreach my $arch (keys %{$self->{arch}}) {
+                my ($fail) = $self->{dbh}->selectrow_array("select fail from $arch where id = ?", undef, $db_id);
+                if ($fail == 1) {
+                    #$self->{dbh}->do("insert into $arch (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
+                    print "[process] detected updates without version bump, unfailing $arch/$pkg\n";
+                }
+            }
+        }
+        
+        # remove package from queue
+        $q_irc->enqueue(['db', 'print', "[process] ($type) $repo/$pkg to $pkgver-$pkgrel"]);
+        $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+    }
+    
+    # check holds against arches
+    # stop arches with holds
+    # start arches with packages ready that don't have holds
+    # push start
 }
 
 # update database with new packages from git and ABS
@@ -820,7 +923,7 @@ sub update {
     my $workroot = $self->{packaging}->{workroot};
     my $archbin = $self->{packaging}->{archbin};
     
-    my %priority = ( 'core'         => 10,   # default importance (package selection priority)
+    my %priority = ( 'core'         => 10,  # default importance (package selection priority)
                      'extra'        => 20,
                      'community'    => 30,
                      'aur'          => 40,

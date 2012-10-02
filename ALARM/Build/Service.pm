@@ -510,6 +510,7 @@ sub cb_queue {
                 }
                 $q_irc->enqueue(['svc','print',"[force] no idle builder available for $data->{pkgbase}"]);
             }
+            
             # push json out to admin interface
             case "admin" {
                 my ($data) = @{$msg}[2];
@@ -556,6 +557,11 @@ sub cb_queue {
                 }
             }
             
+            # push a start on enabled arches
+            case "push" {
+                $self->push_builder("start");
+            }
+            
             ## IRC orders
             # list connected clients
             case "list" {
@@ -584,7 +590,7 @@ sub cb_queue {
                 my $what = @{$msg}[2];
                 if (defined $self->{"armv$what"}) {
                     $self->{"armv$what"} = $order;
-                    $self->push_builder($order, "armv$what");
+                    $self->push_builder($order, "armv$what") if ($from eq 'irc');
                 } elsif ($what eq 'all') {
                     foreach my $arch (sort keys %{$self->{arch}}) {
                         $self->{$arch} = $order;
@@ -613,6 +619,7 @@ sub cb_queue {
                     $q_irc->enqueue(['svc', 'print', "[maint] Requested maintenance run on all builders."]);
                 }
             }
+            
             ## Mirror orders
             # rsync push to farmer complete, set ready
             case "sync" {
