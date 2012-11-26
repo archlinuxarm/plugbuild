@@ -653,10 +653,10 @@ sub push_builder {
     if (defined $target) {
         if ($action eq "start" && $target->{state} eq "idle") {
             $target->{state} = 'check';
-            $builder->{arch} = $arch;
-            $q_db->enqueue(['svc', 'next', $arch, $builder->{cn}, $builder->{highmem}]);
+            $target->{arch} = $arch;
+            $q_db->enqueue(['svc', 'next', $arch, $target->{cn}, $target->{highmem}]);
         } elsif ($arch eq "stop") {
-            $builder->{handle}->push_write(json => {command => 'stop'});
+            $target->{handle}->push_write(json => {command => 'stop'});
         }
         return;
     }
