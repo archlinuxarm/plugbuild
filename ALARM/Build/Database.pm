@@ -633,7 +633,7 @@ sub pkg_unfail {
 # modify package to be (un)skipped
 sub pkg_skip {
     my ($self, $pkg, $op) = @_;
-    my $rows = $self->{dbh}->do("update abs set skip = ? where package = ?", undef, $op, $pkg);
+    my $rows = $self->{dbh}->do("update abs set skip = $op where package = ?", undef, $pkg);
     if ($rows < 1) {
         $q_irc->enqueue(['db','print',"Couldn't modify $pkg, check the name."]);
     } else {
