@@ -813,7 +813,7 @@ sub poll {
             }
         }
         # update queue data
-        $self->{dbh}->do("update queue set ref = 1, hold = ?, pkgname = ?, repo = ? provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, skip = ?, noautobuild = ?, highmem = ? where path = ?",
+        $self->{dbh}->do("update queue set ref = 1, hold = ?, pkgname = ?, repo = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, skip = ?, noautobuild = ?, highmem = ? where path = ?",
                          undef, $hold, $pkgname, $repo, $provides, $pkgver, $pkgrel, $depends, $makedepends, $buildarch, $noautobuild, $highmem, $path);
     }
     
