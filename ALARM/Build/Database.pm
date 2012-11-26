@@ -444,7 +444,7 @@ sub status {
                 $state = 'building' if ($builder && $state eq 'unbuilt');
                 
                 my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
-                my $s; my $duration = (($s=int($time/86400))?$s."d ":'') . (($s=int(($time%86400)/3600))?$s."h ":'') . (($s=int(($time%3600)/60))?$s."m ":'') . (($s = $time%60)?$s."s":'');
+                my $s; my $duration = (($s=int($time/86400))?$s."d":'') . (($s=int(($time%86400)/3600))?$s."h":'') . (($s=int(($time%3600)/60))?$s."m":'') . (($s = $time%60)?$s."s":'');
                 my $status = "[$arch]$highmem$override $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
                 $status .= ", builder=>$builder" if $state eq 'building';
                 $status .= ", time=>$duration" if $state ne 'building';

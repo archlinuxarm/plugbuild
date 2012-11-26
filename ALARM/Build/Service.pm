@@ -550,7 +550,7 @@ sub cb_queue {
                             next;
                         }
                         if ($self->{$test_arch} eq 'start') {                       # push for next arch if it's started
-                            $self->push_builder('start', $test_arch);
+                            $self->push_builder('start', $test_arch, $builder);
                             last;
                         }
                     }
@@ -646,10 +646,22 @@ sub cb_queue {
 
 # push next packages/stop to builders
 sub push_builder {
-    my ($self, $action, $arch) = @_;
+    my ($self, $action, $arch, $target) = @_;
     my $count = 0;
     
-    # create list of builders
+    # push to target builder
+    if (defined $target) {
+        if ($action eq "start" && $target->{state} eq "idle") {
+            $target->{state} = 'check';
+            $builder->{arch} = $arch;
+            $q_db->enqueue(['svc', 'next', $arch, $builder->{cn}, $builder->{highmem}]);
+        } elsif ($arch eq "stop") {
+            $builder->{handle}->push_write(json => {command => 'stop'});
+        }
+        return;
+    }
+    
+    # push to available builders
     foreach my $oucn (keys %{$self->{clientsref}}) {
         next if (!($oucn =~ m/builder\/.*/));
         my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
