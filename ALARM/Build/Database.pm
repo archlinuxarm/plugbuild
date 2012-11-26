@@ -801,7 +801,8 @@ sub poll {
         
         # warn about git overlay being different and flag hold, or warn of override and remove from queue
         if ($type eq 'abs') {
-            my ($db_pkgver, $db_pkgrel, $db_git, $db_override) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, git, override from abs where package = ?", undef, $pkg);
+            my ($db_pkgver, $db_pkgrel, $db_git, $db_skip, $db_override) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, git, skip, override from abs where package = ?", undef, $pkg);
+            $buildarch = $db_skip;
             if (defined $db_pkgrel && $db_git == 1 && $db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
                 $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $repo/$pkg is different in git, git = $pkgver-$pkgrel, abs = $db_pkgver-$db_pkgrel"]);
                 $hold = 1;
