@@ -44,10 +44,13 @@ sub Run {
         my $nodesvc = tcp_server "127.0.0.1", $self->{port}+1, sub { $self->node_accept(@_, 0); };
         my $github = tcp_server undef, $self->{port}+2, sub { $self->gh_accept(@_); };
         my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(@_); });
+        # start git polling every 30 minutes
+        my $tpoll = AnyEvent->timer(after => 60, interval => 1800, cb => sub { $q_db->enqueue(['poll']); });
         $self->{condvar}->wait;
         
         # shutdown
         undef $timer;
+        undef $tpoll;
         $service->cancel;
         while (my ($key, $value) = each %clients) {
             $value->{handle}->destroy;

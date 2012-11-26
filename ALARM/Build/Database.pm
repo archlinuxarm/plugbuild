@@ -43,9 +43,6 @@ sub Run {
     # load architectures and skip bitmasks
     $self->rehash();
     
-    # start git polling every 30 minutes
-    my $timer = AnyEvent->timer(after => 60, interval => 1800, cb => sub { $self->poll(); });
-    
     # thread queue loop
     while (my $orders = $q_db->dequeue) {
         my ($from,$order) = @{$orders};
@@ -220,6 +217,9 @@ sub Run {
                 } else {
                     $q_svc->enqueue(['db', 'next', $arch, $builder, { command => 'next', pkgbase => "FAIL" }]);
                 }
+            }
+            case "poll" {
+                $self->poll();
             }
             case "prep" {
                 my ($arch, $builder, $data) = @{$orders}[2,3,4];
