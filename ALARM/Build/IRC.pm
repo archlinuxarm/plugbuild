@@ -196,19 +196,19 @@ sub cb_publicmsg {
                     $q_db->enqueue(['irc', 'highmem', $pkg]);
                 }
             }
-			case "!list" {
-				$q_svc->enqueue(['irc', 'list']);
-			}
+            case "!list" {
+                    $q_svc->enqueue(['irc', 'list']);
+            }
             case "!maint" {
                 $q_svc->enqueue(['irc', 'maint', $arg]);
             }
             case "!mirrors" {
                 $q_mir->enqueue(['irc', 'list']);
             }
-	    case "!poll" {
-		my ($type) = split(/ /, $arg, 2);
-		$q_db->enqueue(['irc', 'poll', $type]);
-	    }
+            case "!poll" {
+                my ($type) = split(/ /, $arg, 2);
+                $q_db->enqueue(['irc', 'poll', $type]);
+            }
             case "!prune" {
                 my ($pkg) = split(/ /, $arg, 2);
                 if (!$pkg) {
@@ -254,13 +254,13 @@ sub cb_publicmsg {
                     $self->irc_priv_print("usage: !skip <package>");
                 }
             }
-			case ["!start", "!stop"] {
-				if (my ($what) = split(/ /, $arg, 2)) {
-					$q_svc->enqueue(['irc', $trigger, $what]);
-				} else {
-					$self->irc_priv_print("usage: $trigger <all|5|6|7>");
-				}
-			}
+            case ["!start", "!stop"] {
+                if (my ($what) = split(/ /, $arg, 2)) {
+                    $q_svc->enqueue(['irc', $trigger, $what]);
+                } else {
+                    $self->irc_priv_print("usage: $trigger <all|5|6|7>");
+                }
+            }
             case "!status" {
                 my $pkg = (split(/ /, $arg, 2))[0];
                 if ($pkg) {
@@ -269,17 +269,17 @@ sub cb_publicmsg {
                     $self->irc_priv_print("usage: !status <package>");
                 }
             }
-			case "!sync" {
+            case "!sync" {
                 if ($arg && ($arg eq '5' || $arg eq '6' || $arg eq '7')) {
                     $q_mir->enqueue(['irc', 'update', "armv$arg"]);
                     $self->irc_priv_print("[sync] queued armv$arg mirror update");
                 } else {
-    				$q_mir->enqueue(['irc', 'update', 'armv5']);
+                    $q_mir->enqueue(['irc', 'update', 'armv5']);
                     $q_mir->enqueue(['irc', 'update', 'armv6']);
-    				$q_mir->enqueue(['irc', 'update', 'armv7']);
-    				$self->irc_priv_print("[sync] queued mirror updates");
+                    $q_mir->enqueue(['irc', 'update', 'armv7']);
+                    $self->irc_priv_print("[sync] queued mirror updates");
                 }
-			}
+            }
             case "!unfail" {
                 my ($arch, $pkg) = split(/ /, $arg, 2);
                 if ($pkg && $arch) {
