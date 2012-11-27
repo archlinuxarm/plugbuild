@@ -37,6 +37,7 @@ sub Run {
     $self->{condvar} = AnyEvent->condvar;
     $self->{clients} = \%clients;
     $self->{clientsref} = \%clientsref;
+    $self->{poll_count} = 1;
     
     if ($available->down_nb()) {
         # start-up
@@ -44,13 +45,18 @@ sub Run {
         my $nodesvc = tcp_server "127.0.0.1", $self->{port}+1, sub { $self->node_accept(@_, 0); };
         my $github = tcp_server undef, $self->{port}+2, sub { $self->gh_accept(@_); };
         my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(@_); });
-        # start git polling every 30 minutes
-        my $tpoll = AnyEvent->timer(after => 60, interval => 1800, cb => sub { $q_db->enqueue(['svc', 'poll']); });
+	
+	# initial poll, all sources, after 60 seconds
+	my $poll_init = AnyEvent->timer(after => 60, interval => 1800, cb => sub { $q_db->enqueue(['svc', 'poll']); });
+	# poll git sources every 5 minutes, starting after 360 seconds (5 minutes later), triggered by gh_read()
+	my $poll_git = AnyEvent->timer(after => 360, interval => 300, cb => sub { if ($self->{poll_count}) { --$self->{poll_count}; $q_db->enqueue(['svc', 'poll', 'git']); } });
+        # poll abs sources every 30 minutes, starting after 1860 seconds (30 minutes later)
+        my $poll_abs = AnyEvent->timer(after => 1860, interval => 1800, cb => sub { $q_db->enqueue(['svc', 'poll', 'abs']); });
         $self->{condvar}->wait;
         
         # shutdown
         undef $timer;
-        undef $tpoll;
+        undef $poll_abs;
         $service->cancel;
         while (my ($key, $value) = each %clients) {
             $value->{handle}->destroy;
@@ -440,6 +446,7 @@ sub gh_read {
                 my $json = decode_json $data;
                 foreach my $commit (@{$json->{commits}}) {
                     $q_irc->enqueue(['svc', 'print', "[$json->{repository}->{name}] <$commit->{author}->{name}> $commit->{message}", 1]);
+		    $self->{poll_count} = 2 if ($json->{repository}->{name} eq "PKGBUILDs");
                 }
                 $h->destroy;
             });

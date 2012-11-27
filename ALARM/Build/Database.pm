@@ -219,7 +219,7 @@ sub Run {
                 }
             }
             case "poll" {
-                $self->poll();
+                $self->poll(@{$orders}[2]);
             }
             case "prep" {
                 my ($arch, $builder, $data) = @{$orders}[2,3,4];
@@ -713,9 +713,9 @@ sub pkg_select {
     }
 }
 
-# poll git for new packages
+# poll git sources for new packages
 sub poll {
-    my $self = shift;
+    my ($self, $poll_type) = @_;
     
     # parse sources
     my $repos = $self->{dbh}->selectall_arrayref("select id, type, root, sha from sources");
@@ -723,33 +723,40 @@ sub poll {
         my ($id, $type, $root, $sha) = @$repo;
         my @paths;
         
+        # check type
+        next if (defined $poll_type && $type ne $poll_type);
+        
         # pull, get HEAD sha
-        my $newsha = `git --git-dir=$root/.git pull -q && git --git-dir=$root/.git rev-parse HEAD`;
+        my $newsha = `git --work-tree=$root --git-dir=$root/.git pull -q && git --work-tree=$root --git-dir=$root/.git rev-parse HEAD`;
         chomp $newsha;
+        
+        print "[poll] polled $id $type $root $sha -> $newsha\n";
+        next if ($sha eq $newsha);  # 
         
         # get changed directories
         if ($type eq 'git') {       # git overlay: repo/package
-            @paths = `git --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-2 | uniq`;
+            @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-2 | uniq`;
         } elsif ($type eq 'abs') {  # upstream: package
-            @paths = `git --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f1 | uniq`;
+            @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f1 | uniq`;
         } else {                    # skip bad entries
             $q_irc->enqueue(['db','print',"[poll] Unknown source ($id) type: $type, root: $root"]);
             next;
         }
         
-        # queue new directory changes (ref=0), or update count reference (ref=2+)
+        # queue new directory changes (ref=0), or update count reference (ref=2)
         foreach my $path (@paths) {
             my $pkg;
             my $repo = '';
             chomp $path;
             if ($type eq 'git') {   # get repo for git overlay packages since it's easy now
-                ($repo, $pkg) = (split('/', $path))[0];
+                ($repo, $pkg) = split('/', $path, 2);
                 next if (!$pkg);    # not a package update, skip
             } elsif ($type eq 'abs') {
                 $pkg = $path;
             }
+            print "[poll] inserting $type, path: $root/$path, package: $pkg, repo: $repo\n";
             $self->{dbh}->do("insert into queue (type, path, package, repo) values (?, ?, ?, ?)
-                              on duplicate key update ref = ref+1",
+                              on duplicate key update ref = 2",
                               undef, $type, "$root/$path", $pkg, $repo);
         }
         
@@ -767,7 +774,7 @@ sub poll {
         my $hold = 0;
         
         if (! -d $path) {           # directory doesn't exist, flag removed
-            $self->{dbh}->do("update queue set del = 1 where path = ?", undef, $path);
+            $self->{dbh}->do("update queue set del = 1, ref = 1 where path = ?", undef, $path);
             next;
         }
         if ($path =~ /.*\-lts#/) {  # skip LTS packages, remove from queue
@@ -865,8 +872,12 @@ sub process {
         
         # handle deleted package
         if ($del == 1) {
+            if (-d $path) {           # not actually deleted
+                $self->{dbh}->do("update queue set ref = 0, del = 0 where path = ?", undef, $path);
+                next;
+            }
             if ($type eq 'abs') {
-                $self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+                #$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
                 foreach my $arch (keys %{$self->{arch}}) {
                     #$self->pkg_prep($arch, { pkgbase => $pkg });
                     print "[process] deleting $arch/$pkg\n";
@@ -919,6 +930,7 @@ sub process {
             
             # update architecture tables
             foreach my $arch (keys %{$self->{arch}}) {
+                next unless ($self->{skip}->{$arch} & $is_skip);    # don't update skipped architectures
                 #$self->{dbh}->do("insert into $arch (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
                 print "[process] setting done = 0, fail = 0 on $arch table\n";
             }

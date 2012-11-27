@@ -205,6 +205,10 @@ sub cb_publicmsg {
             case "!mirrors" {
                 $q_mir->enqueue(['irc', 'list']);
             }
+	    case "!poll" {
+		my ($type) = split(/ /, $arg, 2);
+		$q_db->enqueue(['irc', 'poll', $type]);
+	    }
             case "!prune" {
                 my ($pkg) = split(/ /, $arg, 2);
                 if (!$pkg) {
