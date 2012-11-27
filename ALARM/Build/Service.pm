@@ -47,7 +47,7 @@ sub Run {
         my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(@_); });
         
         # initial poll, all sources, after 60 seconds
-        my $poll_init = AnyEvent->timer(after => 60, interval => 1800, cb => sub { $q_db->enqueue(['svc', 'poll']); });
+        my $poll_init = AnyEvent->timer(after => 60, cb => sub { $q_db->enqueue(['svc', 'poll']); });
         # poll git sources every 5 minutes, starting after 360 seconds (5 minutes later), triggered by gh_read()
         my $poll_git = AnyEvent->timer(after => 360, interval => 300, cb => sub { if ($self->{poll_count}) { --$self->{poll_count}; $q_db->enqueue(['svc', 'poll', 'git']); } });
         # poll abs sources every 30 minutes, starting after 1860 seconds (30 minutes later)
