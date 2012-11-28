@@ -783,11 +783,11 @@ sub poll {
         }
         
         if ($type eq 'abs') {       # determine upstream repo
-            if (-d "$path/repos/core-i686") {
+            if (-d "$path/repos/core-i686" || -d "$path/repos/core-any") {
                 $repo = "core";
-            } elsif (-d "$path/repos/extra-i686") {
+            } elsif (-d "$path/repos/extra-i686" || -d "$path/repos/extra-any") {
                 $repo = "extra";
-            } elsif (-d "$path/repos/community-i686") {
+            } elsif (-d "$path/repos/community-i686" || -d "$path/repos/community-any") {
                 $repo = "community";
             } else {                # something weird, drop from queue
                 print "[pool] $pkg from $type has no repo, dropping from queue\n";
