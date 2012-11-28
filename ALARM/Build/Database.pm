@@ -871,6 +871,7 @@ sub process {
         } else {
             $hold_total |= int($skip);  # calculate arches to hold, used at the end
             $q_irc->enqueue(['db', 'print', "[process] Holding $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches"]);
+        }
     }
     
     # process non-holds into abs and arch tables

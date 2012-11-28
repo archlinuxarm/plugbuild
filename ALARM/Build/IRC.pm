@@ -205,6 +205,14 @@ sub cb_publicmsg {
             case "!mirrors" {
                 $q_mir->enqueue(['irc', 'list']);
             }
+            case "!override" {
+                my ($pkg) = split(/ /, $arg, 2);
+                if (!$pkg) {
+                    $self->irc_priv_print("usage: !override <package>");
+                } else {
+                    $q_db->enqueue(['irc', 'override', $pkg]);
+                }
+            }
             case "!poll" {
                 my ($type) = split(/ /, $arg, 2);
                 $q_db->enqueue(['irc', 'poll', $type]);
