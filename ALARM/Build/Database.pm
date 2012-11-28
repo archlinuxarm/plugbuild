@@ -847,7 +847,7 @@ sub process {
     my $hold_total = 0;
     foreach my $row (@$rows) {
         my ($path, $repo, $pkg, $pkgver, $pkgrel, $db_pkgver, $db_pkgrel, $skip, $override, $hold_arches) = @$row;
-        my ($git_path, $git_pkg, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, pkgver, pkgrel from queue where type = 'git' and package = ?", undef, $pkg);
+        my ($git_path, $git_pkg, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, pkgver, pkgrel from queue where type = 'git' and ref = 1 and package = ?", undef, $pkg);
         if (defined $git_pkg) {
             print "[process] matched git package found for $pkg, dropping hold\n";
             
