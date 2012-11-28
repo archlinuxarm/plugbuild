@@ -811,10 +811,10 @@ sub poll {
             my ($db_pkgver, $db_pkgrel, $db_git, $db_skip, $db_override) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, git, skip, override from abs where package = ?", undef, $pkg);
             $buildarch = $db_skip;
             if (defined $db_pkgrel && $db_git == 1 && $db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
-                $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $repo/$pkg is different in git, git = $pkgver-$pkgrel, abs = $db_pkgver-$db_pkgrel"]);
+                $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $repo/$pkg is different in overlay, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
                 $hold = 1;
             } elsif (defined $db_pkgrel && $db_git == 1 && $db_override == 1) {
-                $q_irc->enqueue(['db', 'print', "[poll] Override: $repo/$pkg: git = $pkgver-$pkgrel, abs = $db_pkgver-$db_pkgrel"]);
+                $q_irc->enqueue(['db', 'print', "[poll] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
                 $self->{dbh}->do("delete from queue where path = ?", undef, $path);
                 next;
             }
@@ -843,26 +843,34 @@ sub process {
     print "[process] halting all architectures\n";
     
     # match holds to git updates, delete upstream holds if satisfied in overlay
-    my $rows = $self->{dbh}->selectall_arrayref("select path, package, pkgver, pkgrel from queue where ref = 1 and hold = 1");
+    my $rows = $self->{dbh}->selectall_arrayref("select path, queue.repo, queue.package, queue.pkgver, queue.pkgrel, abs.pkgver, abs.pkgrel, queue.skip, override, group_concat(arch) from queue left outer join architectures on queue.skip & architectures.skip > 0 inner join abs on queue.package = abs.package where ref = 1 and hold = 1 group by queue.package");
+    my $hold_total = 0;
     foreach my $row (@$rows) {
-        my ($path, $pkg, $pkgver, $pkgrel) = @$row;
+        my ($path, $repo, $pkg, $pkgver, $pkgrel, $db_pkgver, $db_pkgrel, $skip, $override, $hold_arches) = @$row;
         my ($git_path, $git_pkg, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, pkgver, pkgrel from queue where type = 'git' and package = ?", undef, $pkg);
         if (defined $git_pkg) {
-            print "[process] matched git package found\n";
+            print "[process] matched git package found for $pkg, dropping hold\n";
             
             # ALARM pkgrel bumps are tracked as fractional pkgrel numbers, strip that to determine actual differences
             my $git_pkgrel_stripped = $git_pkgrel;
             $git_pkgrel_stripped =~ s/\.+.*//;
             
             if ("$pkgver-$pkgrel" ne "$git_pkgver-$git_pkgrel_stripped") {
-                $q_irc->enqueue(['db', 'print', "[process] Holding overlay on wrong version for $pkg, git = $git_pkgver-$git_pkgrel_stripped, abs = $pkgver-$pkgrel"]);
+                $q_irc->enqueue(['db', 'print', "[process] Holding $repo/$pkg, version mismatch, overlay: $git_pkgver-$git_pkgrel_stripped, new: $pkgver-$pkgrel"]);
                 $self->{dbh}->do("update queue set hold = 1 where path = ?", undef, $git_path);
             } else {
+                $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg"]);
                 print "[process] removing upstream package $pkg since overlay is good\n";
                 $self->{dbh}->do("delete from queue where path = ?", undef, $path);
                 $self->{dbh}->do("update queue set ref = 1 where path = ?", undef, $git_path);
             }
-        }
+        } elsif ($override == 1) {
+            print "[process] new override on $pkg, dropping hold\n";
+            $q_irc->enqueue(['db', 'print', "[process] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
+            $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+        } else {
+            $hold_total |= int($skip);  # calculate arches to hold, used at the end
+            $q_irc->enqueue(['db', 'print', "[process] Holding $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches"]);
     }
     
     # process non-holds into abs and arch tables
@@ -949,15 +957,9 @@ sub process {
         $self->{dbh}->do("delete from queue where path = ?", undef, $path);
     }
     
-    # find holds against architectures, start those without
-    my $total = 0;
-    $rows = $self->{dbh}->selectall_arrayref("select skip from queue where ref = 1 and hold = 1");
-    foreach my $row (@$rows) {
-        my ($skip) = @$row;
-        $total |= int($skip);
-    }
+    # start architectures without holds
     foreach my $arch (keys %{$self->{arch}}) {
-        next if ($self->{skip}->{$arch} & $total);
+        next if ($self->{skip}->{$arch} & $hold_total);
         my ($ready) = $self->{dbh}->selectrow_array("select count(*) from (
             select p.repo, p.package, p.depends, p.makedepends from abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
