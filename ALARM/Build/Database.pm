@@ -446,7 +446,7 @@ sub status {
                 my $state = (!$done && !$fail?'unbuilt':(!$done&&$fail?'failed':($done && !$fail?'done':'???')));
                 $state = 'building' if ($builder && $state eq 'unbuilt');
                 
-                my $source = ($git&&!$abs?'git':(!$git&&$abs?'abs':'indeterminate'));
+                my $source = ($git?'git':($abs?'abs':'???'));
                 my $s; my $duration = (($s=int($time/86400))?$s."d":'') . (($s=int(($time%86400)/3600))?$s."h":'') . (($s=int(($time%3600)/60))?$s."m":'') . (($s = $time%60)?$s."s":'');
                 my $status = "[$arch]$highmem$override $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
                 $status .= ", builder=>$builder" if $state eq 'building';
@@ -1088,6 +1088,8 @@ sub update {
                 if ($db_repo ne $repo) {
                     $q_irc->enqueue(['db', 'print', "$pkg has been relocated in ABS, git = $db_repo, abs = $repo"]);
                 }
+                # git transition: set abs = 1 on git packages that have an abs counterpart
+                $self->{dbh}->do("update abs set abs = 1 where package = ?", undef, $pkg);
                 next;
             }
             
