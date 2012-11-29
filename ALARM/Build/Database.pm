@@ -849,7 +849,7 @@ sub process {
         my ($path, $repo, $pkg, $pkgver, $pkgrel, $db_pkgver, $db_pkgrel, $skip, $override, $hold_arches) = @$row;
         my ($git_path, $git_pkg, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, pkgver, pkgrel from queue where type = 'git' and ref = 1 and package = ?", undef, $pkg);
         if (defined $git_pkg) {
-            print "[process] matched git package found for $pkg, dropping hold\n";
+            print "[process] matched git package found for $pkg, determining hold status\n";
             
             # ALARM pkgrel bumps are tracked as fractional pkgrel numbers, strip that to determine actual differences
             my $git_pkgrel_stripped = $git_pkgrel;
@@ -857,12 +857,11 @@ sub process {
             
             if ("$pkgver-$pkgrel" ne "$git_pkgver-$git_pkgrel_stripped") {
                 $q_irc->enqueue(['db', 'print', "[process] Holding $repo/$pkg, version mismatch, overlay: $git_pkgver-$git_pkgrel_stripped, new: $pkgver-$pkgrel"]);
-                $self->{dbh}->do("update queue set hold = 1 where path = ?", undef, $git_path);
+                $self->{dbh}->do("delete from queue where path = ?", undef, $git_path);     # remove bad overlay package from the queue, must be re-committed anyway
             } else {
-                $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg"]);
+                $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg, overlay matches"]);
                 print "[process] removing upstream package $pkg since overlay is good\n";
-                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
-                $self->{dbh}->do("update queue set ref = 1 where path = ?", undef, $git_path);
+                $self->{dbh}->do("delete from queue where path = ?", undef, $path);         # remove held upstream package from the queue, allows overlay package to go through processing
             }
         } elsif ($override == 1) {
             print "[process] new override on $pkg, dropping hold\n";
@@ -881,27 +880,52 @@ sub process {
         
         # handle deleted package
         if ($del == 1) {
-            if (-d $path) {           # not actually deleted
+            my ($db_git, $db_abs) = $self->{dbh}->selectrow_array("select git, abs from abs where package = ?", undef, $pkg);
+            if (-d $path) {           # not actually deleted, reprocess
                 $self->{dbh}->do("update queue set ref = 0, del = 0 where path = ?", undef, $path);
                 next;
             }
             if ($type eq 'abs') {
-                #$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
-                foreach my $arch (keys %{$self->{arch}}) {
-                    #$self->pkg_prep($arch, { pkgbase => $pkg });
-                    print "[process] deleting $arch/$pkg\n";
+                if ($db_git == 1) {         # warn us that upstream has trashed something we track, adjust abs flag
+                    $q_irc->enqueue(['db', 'print', "[process] Upstream has removed $repo/$pkg, also tracked in overlay"]);
+                    #$self->{dbh}->do("update abs set abs = 0 where package = ?", undef, $pkg);
+                    print "[process] mysql: update abs set abs = 0 where package = $pkg\n";
+                } else {                    # otherwise trash the package
+                    $q_irc->enqueue(['db', 'print', "[process] Deleting $repo/$pkg (upstream)"]);
+                    #$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+                    print "[process] mysql: update abs set del = 1 where package = $pkg\n";
+                    foreach my $arch (keys %{$self->{arch}}) {
+                        #$self->pkg_prep($arch, { pkgbase => $pkg });
+                        print "[process] deleting $arch/$pkg\n";
+                    }
                 }
             } elsif ($type eq 'git') {
-                # determine if package exists upstream
-                # insert into queue for processing
-                # or delete package like above
+                if ($db_abs == 1) {         # switch to abs, no rebuilding but remove any holds to release upstream replacement
+                    my ($abs_hold) = $self->{dbh}->selectrow_array("select hold from queue where ref = 1 and hold = 1 and type = 'abs' and package = ?", undef, $pkg);
+                    if (defined $abs_hold && $abs_hold == 1) {
+                        $self->{dbh}->do("update queue set hold = 0 where type = 'abs' and package = ?", undef, $pkg);
+                        $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg, overlay version deleted"]);
+                    } else {
+                        $q_irc->enqueue(['db', 'print', "[process] Removed overlay of $repo/$pkg, using upstream package"]);
+                    }
+                    #$self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
+                    print "[process] mysql: update abs set git = 0 where package = $pkg\n";
+                } else {                    # otherwise, trash the package
+                    $q_irc->enqueue(['db', 'print', "[process] Deleting $repo/$pkg (overlay)"]);
+                    #$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+                    print "[process] mysql: update abs set del = 1 where package = $pkg\n";
+                    foreach my $arch (keys %{$self->{arch}}) {
+                        #$self->pkg_prep($arch, { pkgbase => $pkg });
+                        print "[process] deleting $arch/$pkg\n";
+                    }
+                }
             }
             $self->{dbh}->do("delete from queue where path = ?", undef, $path);
             next;
         }
         
         # update abs and arch tables if newer
-        my ($db_id, $db_repo, $db_pkgver, $db_pkgrel, $db_skip, $db_highmem, $db_importance) = $self->{dbh}->selectrow_array("select id, repo, pkgver, pkgrel, skip, highmem, importance from abs where package = ?", undef, $pkg);
+        my ($db_id, $db_repo, $db_pkgver, $db_pkgrel, $db_git, $db_abs, $db_skip, $db_highmem, $db_importance) = $self->{dbh}->selectrow_array("select id, repo, pkgver, pkgrel, git, abs, skip, highmem, importance from abs where package = ?", undef, $pkg);
         my $importance = $priority{$repo};  # set importance
         
         # create work unit here for non-skipped and new packages, to repackage abs changes without ver-rel bump
@@ -924,14 +948,16 @@ sub process {
         }
         
         # update abs table
+        my $is_git = $type eq 'git' ? 1 : $db_git;
+        my $is_abs = $type eq 'abs' ? 1 : $db_abs;
         my $is_skip = $type eq 'git' ? $skip : defined $db_skip ? $db_skip : 1;
         my $is_highmem = $type eq 'git' ? $highmem : defined $db_highmem ? $db_highmem : 0;
         my $is_done = $noautobuild ? 1 : 0; # noautobuild set, assume built, done = 1
         
-        #$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, highmem, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, 0, ?)
-        #                  on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = 0, abs = 1, skip = ?, highmem = ?, del = 0, importance = ?",
-        #                  undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $is_highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_skip, $is_highmem, $importance);
-        print "[process] update abs: $repo/$pkg $pkgver-$pkgrel, skip: $is_skip, highmem: $is_highmem, importance: $importance\n";
+        #$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, highmem, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+        #                  on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = ?, abs = ?, skip = ?, highmem = ?, del = 0, importance = ?",
+        #                  undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance);
+        print "[process] update abs: $repo/$pkg $pkgver-$pkgrel, git: $is_git, abs: $is_abs skip: $is_skip, highmem: $is_highmem, importance: $importance\n";
         
         # new package, different version, update, done = 0
         if (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
