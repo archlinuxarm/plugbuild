@@ -1231,54 +1231,6 @@ sub update_continue {
         }
     }
     $q_irc->enqueue(['db', 'print', "Update complete."]);
-    return;
-    
-    
-    # build package_name_provides
-    $q_irc->enqueue(['db', 'print', "Building package names.."]);
-    print "building package_name_provides..\n";
-    my $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides from abs where del = 0 and skip != 0");
-    $self->{dbh}->do("delete from package_name_provides");
-    foreach my $row (@$rows) {
-        my ($id, $pkgname, $provides) = @$row;
-        foreach my $name (split(/ /, $pkgname)) {
-            $name =~ s/(<|=|>).*//;
-            $self->{dbh}->do("insert into package_name_provides (name, provides, package) values (?, 0, ?)", undef, $name, $id);
-        }
-        if ($provides ne "") {
-            foreach my $name (split(/ /, $provides)) {
-                $name =~ s/(<|=|>).*//;
-                $self->{dbh}->do("insert into package_name_provides (name, provides, package) values (?, 1, ?)", undef, $name, $id);
-            }
-        }
-    }
-    
-    # build package_depends
-    $q_irc->enqueue(['db', 'print', "Building package dependencies.."]);
-    $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, depends, makedepends from abs where del = 0 and skip != 0");
-    $self->{dbh}->do("delete from package_depends");
-    $self->{dbh}->do("delete from deps");
-    foreach my $row (@$rows) {
-        my ($id, $db_pkgname, $depends, $makedepends) = @$row;
-        my %deps;
-        next if (!$depends && !$makedepends);
-        $depends = "" unless $depends;
-        $makedepends = "" unless $makedepends;
-        my @pkgname = split(/ /, $db_pkgname);
-        my $statement = "insert into package_depends (dependency, package, nid) select distinct package, $id, id from package_name_provides where name in (";
-        foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
-            $name =~ s/(<|=|>).*//;
-            next if (grep {$_ eq $name} @pkgname);
-            $statement .= "'$name', ";
-            $deps{$name} = 1;
-        }
-        $statement =~ s/, $/\)/;
-        $self->{dbh}->do("$statement");
-        foreach my $dep (keys %deps) {
-            $self->{dbh}->do("insert into deps values (?, ?)", undef, $id, $dep);
-        }
-    }
-    $q_irc->enqueue(['db', 'print', "Update complete."]);
 }
 
 # print out packages to review for large package removal from ABS
