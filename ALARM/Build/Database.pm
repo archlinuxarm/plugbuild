@@ -299,7 +299,7 @@ sub get_next_package {
             p.repo, p.package, p.depends, p.makedepends
             from abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join armv6 as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
             where p.skip & ? > 0 and p.del = 0 $memstr
             group by p.id
             having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1",
@@ -324,7 +324,7 @@ sub ready {
                 from
                 abs as p
                     join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+                    left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join armv6 as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
                 where p.skip & ? > 0 and p.del = 0  
                 group by p.id
                 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
@@ -354,7 +354,7 @@ sub ready_detail {
         from
         abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join armv6 as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
         where p.skip & ? > 0 and p.del = 0
         group by p.id
         having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance",
@@ -419,9 +419,9 @@ sub status {
     
     if (defined($package) && $package ne '') {
         foreach my $arch (sort keys %{$self->{arch}}) {
-            my @row = $self->{dbh}->selectrow_array("select package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, override, del, finish - start as time from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
+            my @row = $self->{dbh}->selectrow_array("select id, package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, override, del, finish - start as time from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
             if ($row[0]) { # package found
-                my ($name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $override, $del, $time) = @row;
+                my ($id, $name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $override, $del, $time) = @row;
                 
                 # add to combined skipped architecture printout at end
                 if (!($skip & $self->{skip}->{$arch})) {
@@ -458,13 +458,11 @@ sub status {
                     $names .= "'$name', ";
                 }
                 $names =~ s/, $//;
-                my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, case when skip & ? then arm.fail else parent.fail end as fail, abs.skip, abs.del from package_name_provides as pn
-                                                                 inner join package_depends as pd on (pn.package = pd.package)
-                                                                 inner join package_name_provides as pnp on (pd.nid = pnp.id)
-                                                                 inner join $arch as arm on (pd.dependency = arm.id)
-                                                                 inner join $self->{arch}->{$arch} as parent on (pd.dependency = parent.id)
-                                                                 inner join abs on (arm.id = abs.id)
-                                                                 where pn.name in ($names) group by pnp.name having (case when skip & ? then max(arm.done) else max(parent.done) end) = 0", undef, $self->{skip}->{$arch}, $self->{skip}->{$arch});
+                my $blocklist = $self->{dbh}->selectall_arrayref("select abs.repo, abs.package, a.fail, abs.skip, abs.del from deps as d
+                                                                  inner join names as n on (d.dep = n.name)
+                                                                  inner join $arch as a on (a.id = n.package)
+                                                                  inner join abs on (abs.id = a.id)
+                                                                  where d.id = $id group by n.name having max(done) = 0");
                 if (scalar(@{$blocklist})) {
                     $status .= ", blocked on: ";
                     foreach my $blockrow (@$blocklist) {
@@ -990,7 +988,7 @@ sub process {
         my ($ready) = $self->{dbh}->selectrow_array("select count(*) from (
             select p.repo, p.package, p.depends, p.makedepends from abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select dp.package as id, max(done) as done from package_depends as dp inner join package_name_provides as pn on (dp.nid = pn.id) inner join $arch as a on (a.id = pn.package) group by id, name) as d on (d.id = p.id)
+            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join armv6 as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
             where p.skip & ? > 0 and p.del = 0 group by p.id having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
             ) as xx", undef, $self->{skip}->{$arch});
         if ($ready > 0) {
@@ -1202,6 +1200,39 @@ sub update_continue {
             $self->pkg_prep($arch, { pkgbase => $pkg });
         }
     }
+    
+    # build new dep tables
+    $q_irc->enqueue(['db', 'print', "Building dependencies.."]);
+    my $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides, depends, makedepends from abs where del = 0 and skip != 0");
+    $self->{dbh}->do("delete from names");
+    $self->{dbh}->do("delete from deps");
+    foreach my $row (@$rows) {
+        my ($id, $pkgname, $provides, $depends, $makedepends) = @$row;
+        my @names = split(/ /, join(' ', $pkgname, $provides));
+        my %deps;
+        
+        # build names table
+        foreach my $name (@names) {
+            $name =~ s/(<|=|>).*//;
+            $self->{dbh}->do("insert into names values (?, ?)", undef, $name, $id);
+        }
+        
+        # build deps table
+        next if (!$depends && !$makedepends);
+        $depends = "" unless $depends;
+        $makedepends = "" unless $makedepends;
+        foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
+            $name =~ s/(<|=|>).*//;
+            next if (grep {$_ eq $name} @names);
+            $deps{$name} = 1;
+        }
+        foreach my $dep (keys %deps) {
+            $self->{dbh}->do("insert into deps values (?, ?)", undef, $id, $dep);
+        }
+    }
+    $q_irc->enqueue(['db', 'print', "Update complete."]);
+    return;
+    
     
     # build package_name_provides
     $q_irc->enqueue(['db', 'print', "Building package names.."]);
