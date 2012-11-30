@@ -299,7 +299,7 @@ sub get_next_package {
             p.repo, p.package, p.depends, p.makedepends
             from abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join armv6 as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
+            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
             where p.skip & ? > 0 and p.del = 0 $memstr
             group by p.id
             having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1",
@@ -324,7 +324,7 @@ sub ready {
                 from
                 abs as p
                     join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join armv6 as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
+                    left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
                 where p.skip & ? > 0 and p.del = 0  
                 group by p.id
                 having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
@@ -354,7 +354,7 @@ sub ready_detail {
         from
         abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join armv6 as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
+            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
         where p.skip & ? > 0 and p.del = 0
         group by p.id
         having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance",
@@ -988,7 +988,7 @@ sub process {
         my ($ready) = $self->{dbh}->selectrow_array("select count(*) from (
             select p.repo, p.package, p.depends, p.makedepends from abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join armv6 as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
+            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
             where p.skip & ? > 0 and p.del = 0 group by p.id having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
             ) as xx", undef, $self->{skip}->{$arch});
         if ($ready > 0) {
