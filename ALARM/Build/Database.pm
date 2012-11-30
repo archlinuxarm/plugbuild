@@ -419,7 +419,7 @@ sub status {
     
     if (defined($package) && $package ne '') {
         foreach my $arch (sort keys %{$self->{arch}}) {
-            my @row = $self->{dbh}->selectrow_array("select id, package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, override, del, finish - start as time from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
+            my @row = $self->{dbh}->selectrow_array("select abs.id, package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, override, del, finish - start as time from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
             if ($row[0]) { # package found
                 my ($id, $name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $override, $del, $time) = @row;
                 
