@@ -1226,8 +1226,10 @@ sub update_continue {
     $q_irc->enqueue(['db', 'print', "Building package dependencies.."]);
     $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, depends, makedepends from abs where del = 0 and skip != 0");
     $self->{dbh}->do("delete from package_depends");
+    $self->{dbh}->do("delete from deps");
     foreach my $row (@$rows) {
         my ($id, $db_pkgname, $depends, $makedepends) = @$row;
+        my %deps;
         next if (!$depends && !$makedepends);
         $depends = "" unless $depends;
         $makedepends = "" unless $makedepends;
@@ -1237,9 +1239,13 @@ sub update_continue {
             $name =~ s/(<|=|>).*//;
             next if (grep {$_ eq $name} @pkgname);
             $statement .= "'$name', ";
+            $deps{$name} = 1;
         }
         $statement =~ s/, $/\)/;
         $self->{dbh}->do("$statement");
+        foreach my $dep (keys %deps) {
+            $self->{dbh}->do("insert into deps values (?, ?)", undef, $id, $dep);
+        }
     }
     $q_irc->enqueue(['db', 'print', "Update complete."]);
 }
