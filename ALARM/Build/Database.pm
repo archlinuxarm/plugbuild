@@ -977,6 +977,36 @@ sub process {
             }
         }
         
+        # update dependency tables
+        ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
+        #$self->{dbh}->do("delete from names where package = ?", $db_id);
+        #$self->{dbh}->do("delete from deps where id = ?", $db_id);
+        print "[process] $pkg: delete from names/deps there package/id = $db_id\n";
+        my @names = split(/ /, join(' ', $pkgname, $provides));
+        my %deps;
+        
+        # insert package names and provides
+        foreach my $name (@names) {
+            $name =~ s/(<|=|>).*//;
+            #$self->{dbh}->do("insert into names values (?, ?)", undef, $name, $db_id);
+        }
+        print "[process] $pkg names: $pkgname $provides\n";
+        
+        # insert package dependencies
+        if ($depends && $makedepends) {
+            $depends = "" unless $depends;
+            $makedepends = "" unless $makedepends;
+            foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
+                $name =~ s/(<|=|>).*//;
+                next if (grep {$_ eq $name} @names);
+                $deps{$name} = 1;
+            }
+            #foreach my $dep (keys %deps) {
+            #    $self->{dbh}->do("insert into deps values (?, ?)", undef, $id, $dep);
+            #}
+            print "[process] $pkg deps: $depends $makedepends\n";
+        }
+        
         # remove package from queue
         $q_irc->enqueue(['db', 'print', "[process] ($type) $repo/$pkg to $pkgver-$pkgrel"]);
         $self->{dbh}->do("delete from queue where path = ?", undef, $path);
