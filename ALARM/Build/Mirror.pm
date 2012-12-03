@@ -125,9 +125,10 @@ sub update {
     }
     $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring $arch"]);
     
-    # set timer to check Tier 2 mirrors after 60 seconds
+    # set timer to check Tier 2 mirrors after 120 seconds
     undef $self->{$arch};
-    $self->{$arch} = AnyEvent->timer(after => 60, cb => sub { $self->tier2($arch, $sync); });
+    AnyEvent->now_update;
+    $self->{$arch} = AnyEvent->timer(after => 120, cb => sub { $self->tier2($arch, $sync); });
 }
 
 # check Tier 2 mirrors for synchronization

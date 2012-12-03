@@ -878,7 +878,7 @@ sub process {
         
         # handle deleted package
         if ($del == 1) {
-            my ($db_git, $db_abs) = $self->{dbh}->selectrow_array("select git, abs from abs where package = ?", undef, $pkg);
+            my ($db_id, $db_git, $db_abs) = $self->{dbh}->selectrow_array("select id, git, abs from abs where package = ?", undef, $pkg);
             if (-d $path) {           # not actually deleted, reprocess
                 $self->{dbh}->do("update queue set ref = 0, del = 0 where path = ?", undef, $path);
                 next;
@@ -891,7 +891,9 @@ sub process {
                 } else {                    # otherwise trash the package
                     $q_irc->enqueue(['db', 'print', "[process] Deleting $repo/$pkg (upstream)"]);
                     #$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
-                    print "[process] mysql: update abs set del = 1 where package = $pkg\n";
+                    #$self->{dbh}->do("delete from names where package = ?", undef, $db_id);
+                    #$self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
+                    print "[process] mysql: update abs set del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
                         #$self->pkg_prep($arch, { pkgbase => $pkg });
                         print "[process] deleting $arch/$pkg\n";
@@ -911,7 +913,9 @@ sub process {
                 } else {                    # otherwise, trash the package
                     $q_irc->enqueue(['db', 'print', "[process] Deleting $repo/$pkg (overlay)"]);
                     #$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
-                    print "[process] mysql: update abs set del = 1 where package = $pkg\n";
+                    #$self->{dbh}->do("delete from names where package = ?", undef, $db_id);
+                    #$self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
+                    print "[process] mysql: update abs set del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
                         #$self->pkg_prep($arch, { pkgbase => $pkg });
                         print "[process] deleting $arch/$pkg\n";
