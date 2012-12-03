@@ -879,7 +879,7 @@ sub process {
         # handle deleted package
         if ($del == 1) {
             my ($db_id, $db_git, $db_abs) = $self->{dbh}->selectrow_array("select id, git, abs from abs where package = ?", undef, $pkg);
-            if (-d $path) {           # not actually deleted, reprocess
+            if (-d $path) {                 # not actually deleted, reprocess
                 $self->{dbh}->do("update queue set ref = 0, del = 0 where path = ?", undef, $path);
                 next;
             }
@@ -930,17 +930,15 @@ sub process {
         my ($db_id, $db_repo, $db_pkgver, $db_pkgrel, $db_git, $db_abs, $db_skip, $db_highmem, $db_importance) = $self->{dbh}->selectrow_array("select id, repo, pkgver, pkgrel, git, abs, skip, highmem, importance from abs where package = ?", undef, $pkg);
         my $importance = $priority{$repo};  # set importance
         
-        # create work unit here for non-skipped and new packages, to repackage abs changes without ver-rel bump
-        if ((defined $db_skip && $db_skip > 0) || (! defined $db_skip)) {
-            if ($type eq 'abs') {
-                #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$path/repos" "$repo-i686" --transform 's,^$repo-i686,$pkg,' > /dev/null`;
-                print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$path/repos\" \"$repo-i686\" --transform 's,^$repo-i686,$pkg,' > /dev/null\n";
-            } elsif ($type eq 'git') {
-                my $tmp = $path;
-                $tmp =~ s|/[^/]*$||;    # strip last directory
-                #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$tmp" "$pkg" > /dev/null`;
-                print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$tmp\" \"$pkg\" > /dev/null\n";
-            }
+        # create work unit
+        if ($type eq 'abs') {
+            #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$path/repos" "$repo-i686" --transform 's,^$repo-i686,$pkg,' > /dev/null`;
+            print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$path/repos\" \"$repo-i686\" --transform 's,^$repo-i686,$pkg,' > /dev/null\n";
+        } elsif ($type eq 'git') {
+            my $tmp = $path;
+            $tmp =~ s|/[^/]*$||;            # strip last directory
+            #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$tmp" "$pkg" > /dev/null`;
+            print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$tmp\" \"$pkg\" > /dev/null\n";
         }
         
         # relocate package if repo has changed
@@ -950,7 +948,7 @@ sub process {
         }
         
         # update abs table
-        my $is_git = $type eq 'git' ? 1 : $db_git;
+        my $is_git = $type eq 'git' ? 1 : 0;
         my $is_abs = $type eq 'abs' ? 1 : $db_abs;
         my $is_skip = $type eq 'git' ? $skip : defined $db_skip ? $db_skip : 1;
         my $is_highmem = $type eq 'git' ? $highmem : defined $db_highmem ? $db_highmem : 0;
