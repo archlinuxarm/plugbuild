@@ -805,11 +805,17 @@ sub poll {
         if ($type eq 'abs') {
             my ($db_pkgver, $db_pkgrel, $db_git, $db_skip, $db_override) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, git, skip, override from abs where package = ?", undef, $pkg);
             $buildarch = $db_skip;
-            if (defined $db_pkgrel && $db_git == 1 && $db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
+            my $db_pkgrel_stripped = $db_pkgrel;    # strip any of our fraction pkgrel numbers
+            $db_pkgrel_stripped =~ s/\.+.*//;
+            if (defined $db_pkgrel && $db_git == 1 && $db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel_stripped") {
                 $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $repo/$pkg is different in overlay, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
                 $hold = 1;
             } elsif (defined $db_pkgrel && $db_git == 1 && $db_override == 1) {
                 $q_irc->enqueue(['db', 'print', "[poll] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
+                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+                next;
+            } elsif ($db_git == 1 && "$pkgver-$pkgrel" eq "$db_pkgver-$db_pkgrel_stripped") {
+                $q_irc->enqueue(['db', 'print', "[poll] Detected upstream updates to overlay package with no version bump for $repo/$pkg"]);
                 $self->{dbh}->do("delete from queue where path = ?", undef, $path);
                 next;
             }
