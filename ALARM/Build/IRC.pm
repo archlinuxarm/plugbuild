@@ -217,6 +217,13 @@ sub cb_publicmsg {
                 my ($type) = split(/ /, $arg, 2);
                 $q_db->enqueue(['irc', 'poll', $type]);
             }
+            case "!power" {
+                if ($arg) {
+                    $q_svc->enqueue(['db', 'farm', 'power', '', '', $arg]);
+                } else {
+                    $self->irc_priv_print("usage: !power <cycle|on|off> <builder#>");
+                }
+            }
             case "!prune" {
                 my ($pkg) = split(/ /, $arg, 2);
                 if (!$pkg) {

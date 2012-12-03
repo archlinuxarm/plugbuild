@@ -12,6 +12,7 @@ use AnyEvent::TLS;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
 use JSON::XS;
+use Device::SerialPort;
 
 my %config = ParseConfig("$Bin/farmer.conf");
 
@@ -20,6 +21,15 @@ my $condvar = AnyEvent->condvar;
 my $plugbuild;
 my $w = AnyEvent->signal(signal => "INT", cb => sub { $condvar->broadcast; });
 my $timer_retry;
+
+# serial setup for power control
+my $serial = new Device::SerialPort("/dev/ttyUSB0");
+$serial->baudrate(9600);
+$serial->parity("none");
+$serial->databits(8);
+$serial->stopbits(1);
+$serial->handshake("none");
+$serial->write_settings;
 
 # main event loop
 con();
@@ -137,6 +147,31 @@ sub cb_read {
         case "move" {
             my ($oldrepo, $newrepo) = @{$repo};
             system("mv $config{$arch}/$oldrepo/$arg $config{$arch}/$newrepo/$arg");
+        }
+        
+        # builder power control
+        case "power" {
+            my ($what, $who) = split(/ /, $arg, 2);
+            if ($who >= 1 && $who <= 12) {
+                my $num = chr(96+int($who));    # numeric -> ascii representation
+                if ($what eq "cycle") {
+                    my $cmd = 'c';
+                    $serial->write("$cmd$num");
+                    $handle->push_write(json => {command => 'power', data => "[power] Builder $who cycled"});
+                } elsif ($what eq "on") {
+                    my $cmd = 'o';
+                    $serial->write("$cmd$num");
+                    $handle->push_write(json => {command => 'power', data => "[power] Builder $who turned on"});
+                } elsif ($what eq "off") {
+                    my $cmd = 'x';
+                    $serial->write("$cmd$num");
+                    $handle->push_write(json => {command => 'power', data => "[power] Builder $who turned off"});
+                } else {
+                    $handle->push_write(json => {command => 'power', data => "[power] Unknown command '$what'"});
+                }
+            } else {
+                $handle->push_write(json => {command => 'power', data => "[power] Builder $who doesn't exist"});
+            }
         }
         
         # repo-remove package

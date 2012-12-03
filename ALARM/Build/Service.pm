@@ -374,6 +374,12 @@ sub cb_read {
         # farmer client
         case "farmer" {
             switch ($data->{command}) {
+                # power command ACK
+                #  - data       => message to print to IRC
+                case "power" {
+                    $q_irc->enqueue(['svc', 'print', $data->{data}]);
+                }
+                
                 # sync farmer - rsync push
                 #  - address    => address to push to
                 case "sync" {
@@ -484,7 +490,7 @@ sub cb_queue {
             }
             
             # repo command for farmer
-            #  - command    - add/insert/remove/delete/move
+            #  - command    - add/insert/remove/delete/move/power
             #  - architecture
             #  - repo
             #  - arg        - pkgname/filename
