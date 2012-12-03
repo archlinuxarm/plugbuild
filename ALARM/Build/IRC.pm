@@ -236,15 +236,6 @@ sub cb_publicmsg {
                 my ($arch) = split(/ /, $arg, 2);
                 $q_db->enqueue(['irc','ready',$arch]);
             }
-            case "!recycle" {
-                if($arg){
-                    $q_irc->enqueue(['irc','recycle']) if $arg eq 'irc' || $arg eq 'all';
-                    $q_db->enqueue(['irc','recycle']) if $arg eq 'database' || $arg eq 'all';
-                    $q_svc->enqueue(['irc','recycle']) if $arg eq 'service' || $arg eq 'all';
-                }else{
-                    $self->irc_priv_print("usage: !recycle <irc|database|service|all>");
-                }
-            }
             case "!refresh" {
                 $q_mir->enqueue(['irc', 'refresh']);
             }
@@ -359,7 +350,7 @@ sub cb_queue {
                 $self->irc_priv_print("$order from $from");
             }
         }
-        if ($order eq 'quit' || $order eq 'recycle'){
+        if ($order eq 'quit'){
             undef $self->{timer};
             $self->{con}->disconnect($order);
             $self->{condvar}->broadcast;

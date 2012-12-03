@@ -44,8 +44,6 @@ sub new{
     # load the config file we're going to use.
     my %config = ParseConfig($config_file);
     $self->{config} = \%config;
-    # set the auto-refresh for the factory
-    $ALARM::Build::Factory::refresh = 2;
     # holy art thou...
     bless $self,$class;
     # and... were out

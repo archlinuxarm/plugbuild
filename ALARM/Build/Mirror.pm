@@ -61,9 +61,6 @@ sub cb_queue {
                 $available->down_force(10);
                 $self->{condvar}->broadcast;
             }
-            case "recycle" {
-                $self->{condvar}->broadcast;
-            }
             
             # IRC orders
             case "list" {

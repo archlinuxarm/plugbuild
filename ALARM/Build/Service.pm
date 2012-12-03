@@ -653,7 +653,7 @@ sub cb_queue {
                 $handle->push_write(json => {command => 'sync'});
             }
         }
-        if ($order eq 'quit' || $order eq 'recycle'){
+        if ($order eq 'quit'){
             $self->{condvar}->broadcast;
             return;
         }

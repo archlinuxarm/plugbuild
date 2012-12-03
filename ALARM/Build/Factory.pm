@@ -8,10 +8,6 @@ use ALARM::Build::Database;
 use ALARM::Build::IRC;
 use ALARM::Build::Mirror;
 
-use Module::Refresh;
-my $refresher = new Module::Refresh;
-our $refresh = 0;
-
 sub new{
     my $class = shift;
     my $want = shift;
@@ -23,9 +19,6 @@ sub new{
     my $want_path = $full_want;
     $want_path =~ s/::/\//g;
     $want_path.='.pm';
-    # refresh if set.
-    $refresher->refresh_module($want_path) if $refresh == 2;
-    $refresher->refresh_module_if_modified($want_path) if $refresh == 1;
     # create/return
     $self = new $full_want(@_);
     

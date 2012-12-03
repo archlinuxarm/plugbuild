@@ -51,9 +51,6 @@ sub Run {
             $available->down_force(10);
             last;
         }
-        if( $order eq 'recycle'){
-            last;
-        }
         switch ($order) {
             # irc orders
             case "aur_check" {
