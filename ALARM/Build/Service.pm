@@ -582,7 +582,7 @@ sub cb_queue {
             # list connected clients
             case "list" {
                 $q_irc->enqueue(['svc', 'print', "[list] Connected clients:"]);
-                foreach my $oucn (keys %{$self->{clientsref}}) {
+                foreach my $oucn (sort keys %{$self->{clientsref}}) {
                     next if (!($oucn =~ m/builder\/.*/));
                     my $builder = $self->{clients}->{$self->{clientsref}->{$oucn}};
                     my @arches;
