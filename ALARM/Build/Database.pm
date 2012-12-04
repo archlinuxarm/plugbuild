@@ -740,14 +740,13 @@ sub poll {
         
         # queue new directory changes (ref=0), or update count reference (ref=2)
         foreach my $path (@paths) {
-            my $pkg;
-            my $repo = '';
+            my $pkg, $repo;
             chomp $path;
             if ($type eq 'git') {   # get repo for git overlay packages since it's easy now
                 ($repo, $pkg) = split('/', $path, 2);
                 next if (!$pkg);    # not a package update, skip
             } elsif ($type eq 'abs') {
-                $pkg = $path;
+                my ($pkg, $repo) = $path =~ /([^\/]*)\/repos\/(\w+)/;
             }
             print "[poll] inserting $type, path: $root/$path, package: $pkg, repo: $repo\n";
             $self->{dbh}->do("insert into queue (type, path, package, repo) values (?, ?, ?, ?)
@@ -777,23 +776,8 @@ sub poll {
             next; 
         }
         
-        if ($type eq 'abs') {       # determine upstream repo
-            if (-d "$path/repos/core-i686" || -d "$path/repos/core-any") {
-                $repo = "core";
-            } elsif (-d "$path/repos/extra-i686" || -d "$path/repos/extra-any") {
-                $repo = "extra";
-            } elsif (-d "$path/repos/community-i686" || -d "$path/repos/community-any") {
-                $repo = "community";
-            } else {                # something weird, drop from queue
-                print "[pool] $pkg from $type has no repo, dropping from queue\n";
-                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
-                next;
-            }
-        }
-        
         # source PKGBUILD
-        my $extra = ($type eq 'abs') ? "/repos/$repo-i686" : '';
-        my $vars = `./gitsource.sh $path$extra`;
+        my $vars = `./gitsource.sh $path`;
         chomp($vars);
         if ($vars eq "NULL") {      # skip non-existent/malformed packages
             $self->{dbh}->do("delete from queue where path = ?", undef, $path);
