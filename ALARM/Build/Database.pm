@@ -740,7 +740,7 @@ sub poll {
         
         # queue new directory changes (ref=0), or update count reference (ref=2)
         foreach my $path (@paths) {
-            my $pkg, $repo;
+            my ($pkg, $repo);
             chomp $path;
             if ($type eq 'git') {   # get repo for git overlay packages since it's easy now
                 ($repo, $pkg) = split('/', $path, 2);
