@@ -923,7 +923,7 @@ sub process {
             #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$path/.." "$strip" --transform 's,^$strip,$pkg,' > /dev/null`;
             print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$path/..\" \"$strip\" --transform 's,^$strip,$pkg,' > /dev/null\n";
         } elsif ($type eq 'git') {
-            my ($strip) = $path =~ s|/[^/]*$||;
+            my ($strip) = $path =~ /(.*)\/[^\/]*$/;
             #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$strip" "$pkg" > /dev/null`;
             print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$strip\" \"$pkg\" > /dev/null\n";
         }
