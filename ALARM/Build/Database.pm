@@ -746,7 +746,7 @@ sub poll {
                 ($repo, $pkg) = split('/', $path, 2);
                 next if (!$pkg);    # not a package update, skip
             } elsif ($type eq 'abs') {
-                my ($pkg, $repo) = $path =~ /([^\/]*)\/repos\/(\w+)/;
+                ($pkg, $repo) = $path =~ /([^\/]*)\/repos\/(\w+)/;
             }
             print "[poll] inserting $type, path: $root/$path, package: $pkg, repo: $repo\n";
             $self->{dbh}->do("insert into queue (type, path, package, repo) values (?, ?, ?, ?)
@@ -919,13 +919,13 @@ sub process {
         
         # create work unit
         if ($type eq 'abs') {
-            #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$path/repos" "$repo-i686" --transform 's,^$repo-i686,$pkg,' > /dev/null`;
-            print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$path/repos\" \"$repo-i686\" --transform 's,^$repo-i686,$pkg,' > /dev/null\n";
+            my ($strip) = $path =~ /.*\/([^\/]*)$/;
+            #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$path/.." "$strip" --transform 's,^$strip,$pkg,' > /dev/null`;
+            print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$path/..\" \"$strip\" --transform 's,^$strip,$pkg,' > /dev/null\n";
         } elsif ($type eq 'git') {
-            my $tmp = $path;
-            $tmp =~ s|/[^/]*$||;            # strip last directory
-            #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$tmp" "$pkg" > /dev/null`;
-            print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$tmp\" \"$pkg\" > /dev/null\n";
+            my ($strip) = $path =~ s|/[^/]*$||;
+            #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$strip" "$pkg" > /dev/null`;
+            print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$strip\" \"$pkg\" > /dev/null\n";
         }
         
         # relocate package if repo has changed
