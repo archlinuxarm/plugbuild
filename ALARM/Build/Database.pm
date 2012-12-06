@@ -977,6 +977,7 @@ sub process {
         # insert package names and provides
         foreach my $name (@names) {
             $name =~ s/(<|=|>).*//;
+            next if ($name eq "");
             #$self->{dbh}->do("insert into names values (?, ?)", undef, $name, $db_id);
         }
         print "[process] $pkg names: $pkgname $provides\n";
@@ -987,6 +988,7 @@ sub process {
             $makedepends = "" unless $makedepends;
             foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
                 $name =~ s/(<|=|>).*//;
+                next if ($name eq "");
                 next if (grep {$_ eq $name} @names);
                 $deps{$name} = 1;
             }
@@ -1233,6 +1235,7 @@ sub update_continue {
         # build names table
         foreach my $name (@names) {
             $name =~ s/(<|=|>).*//;
+            next if ($name eq "");
             $self->{dbh}->do("insert into names values (?, ?)", undef, $name, $id);
         }
         
@@ -1242,6 +1245,7 @@ sub update_continue {
         $makedepends = "" unless $makedepends;
         foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
             $name =~ s/(<|=|>).*//;
+            next if ($name eq "");
             next if (grep {$_ eq $name} @names);
             $deps{$name} = 1;
         }
