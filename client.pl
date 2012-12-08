@@ -30,6 +30,8 @@ my $childpid = 0;
 my %files;
 my $current_filename;
 my $current_fh;
+my $uploading = 0;
+my @stats;
 
 # cache setup
 #`rm -rf $cacheroot`;
@@ -44,6 +46,7 @@ my $h;
 my $w = AnyEvent->signal(signal => "INT", cb => sub { bailout(); });
 my $timer_retry;
 my $timer_idle;
+my $server = tcp_server "127.0.0.1", 80, sub { cd_accept(@_); };
 
 # main event loop
 $state->{command} = 'idle';
@@ -161,6 +164,76 @@ sub cb_starttls {
     $condvar->broadcast;
 }
 
+# accept collectd HTTP POST connection
+sub cd_accept {
+    my ($fh, $address) = @_;
+    return unless $fh;
+
+    my $handle;
+    my $data;
+    $handle = new AnyEvent::Handle
+                            fh          => $fh,
+                            peername    => $address,
+                            keepalive   => 1,
+                            no_delay    => 1,
+                            on_error    => sub { print "connection lost\n"; },
+                            on_read     => sub { $handle->push_read(regex => qr<\015\012\015\012>, undef, qr<^.*[^\015\012]>, sub { cd_read(@_); })}
+                            ;
+};
+
+# process collectd POST information
+sub cd_read {
+    my ($handle, $data) = @_;
+    if ($data =~ /Content-Length: (.*)\015?\012/) {
+        $handle->push_read(chunk => $1,
+            sub {
+                my ($handle, $data) = @_;
+                $data =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
+                my $json = decode_json $data;
+                foreach my $block (@$json) {
+                    if ($block->{plugin} eq 'cpu') {
+                        next unless ($block->{type_instance} eq "user" || $block->{type_instance} eq "system" || $block->{type_instance} eq "wait");
+                        my $type = "$block->{plugin}$block->{plugin_instance}_$block->{type_instance}";
+			push @stats, { command => 'stats', ts => int($block->{time}), type => $type, value => @{$block->{values}}[0] };
+                    }
+                    if ($block->{plugin} eq 'memory') {
+                        next unless ($block->{type_instance} eq 'used');
+                        my $value = int(@{$block->{values}}[0] / 1000000);
+			push @stats, { command => 'stats', ts => int($block->{time}), type => 'mem', value => $value };
+                    }
+                    if ($block->{plugin} eq 'interface') {
+                        next unless ($block->{type} eq 'if_octets');
+			push @stats, { command => 'stats', ts => int($block->{time}), type => 'eth_r', value => @{$block->{values}}[0] };
+			push @stats, { command => 'stats', ts => int($block->{time}), type => 'eth_w', value => @{$block->{values}}[1] };
+                    }
+                    if ($block->{plugin} eq 'disk') {
+                        if ($block->{type} eq 'disk_octets') {
+			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_ops_r', value => @{$block->{values}}[0] };
+			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_ops_w', value => @{$block->{values}}[1] };
+                        } elsif ($block->{type} eq 'disk_ops') {
+			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_oct_r', value => @{$block->{values}}[0] };
+			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_oct_w', value => @{$block->{values}}[1] };
+                        }
+                    }
+                }
+                $handle->push_write("HTTP/1.1 200 OK\n");
+                $handle->on_drain(sub { $handle->destroy; });
+            });
+	cd_push();
+    } else {
+	$handle->destroy;
+    }
+}
+
+# push collectd stats to plugbuild
+sub cd_push {
+    if ($uploading == 0 && scalar(@stats)) {
+	foreach my $stat (@stats) {
+	    $h->push_write(json => $stat);
+	}
+    }
+}
+
 # callback for reading data
 sub cb_read {
     my ($handle, $data) = @_;
@@ -198,6 +271,7 @@ sub cb_read {
             }
         }
         case "open" {
+	    $uploading = 1;
             $handle->on_drain(sub { cb_upload(@_); });
             cb_upload();
         }
@@ -227,6 +301,7 @@ sub cb_read {
             }
         }
         case "uploaded" {
+	    $uploading = 0;
             if ($state->{command} eq "fail") { # we're done, just uploaded a log
                 $handle->push_write(json => $state);
                 delete $files{$current_filename};
@@ -273,6 +348,9 @@ sub build_start {
     system("echo '' >> PKGBUILD"); # echo blank line for malformed PKGBUILDs
     system("makepkg -g --asroot >> PKGBUILD");
     
+    # pause to allow repo to settle
+    sleep 3;
+    
     # build package, replace perl process with mkarchroot
     print " -> Building package\n";
     exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -AcsfrL --skippgpcheck --nocheck") or print "couldn't exec: $!";
@@ -285,10 +363,10 @@ sub build_finish {
     $childpid = 0;
     
     # build failed
-	if ($status) {
+    if ($status) {
         # set fail state
         $state->{command} = 'fail';
-
+	
         # check for log file
         my ($logfile) = glob("$config{$state->{arch}}{chroot}/copy/build/*-package.log") ||
                         glob("$config{$state->{arch}}{chroot}/copy/build/*-check.log")   ||
@@ -307,7 +385,7 @@ sub build_finish {
         }
         
     }
-	
+    
     # build succeeded
     else {
         # enumerate packages for upload
@@ -409,6 +487,9 @@ sub cb_add {
         $h->push_write(json => \%reply);
     } else {
         print " -> finished uploading, sending done\n";
+	# send any stats first to count toward this build
+	cd_push();
+	# then send done
         $state->{command} = 'done';
         $h->push_write(json => $state);
     }
