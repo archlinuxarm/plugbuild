@@ -788,7 +788,7 @@ sub poll {
         # warn about git overlay being different and flag hold, or warn of override and remove from queue
         if ($type eq 'abs') {
             my ($db_repo, $db_pkgver, $db_pkgrel, $db_git, $db_skip, $db_override) = $self->{dbh}->selectrow_array("select repo, pkgver, pkgrel, git, skip, override from abs where package = ?", undef, $pkg);
-            if ($db_git == 1) {
+            if (defined $db_git && $db_git == 1) {
                 $buildarch = $db_skip;
                 my $db_pkgrel_stripped = $db_pkgrel;    # strip any of our fraction pkgrel numbers
                 $db_pkgrel_stripped =~ s/\.+.*//;
