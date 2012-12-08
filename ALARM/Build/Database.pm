@@ -768,7 +768,7 @@ sub poll {
         my $hold = 0;
         
         if (! -d $path) {           # directory doesn't exist, flag removed
-            $self->{dbh}->do("update queue set del = 1, ref = 1 where path = ?", undef, $path);
+            $self->{dbh}->do("update queue set hold = 0, del = 1, ref = 1 where path = ?", undef, $path);
             next;
         }
         if ($path =~ /.*\-lts#/) {  # skip LTS packages, remove from queue
