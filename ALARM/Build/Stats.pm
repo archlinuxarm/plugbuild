@@ -116,7 +116,8 @@ sub log_stat {
     
     # store package data
     if ($pkg ne '') {
-        # update stats table
+        $self->{dbh}->do("insert into stats (package, host, ts, $type) values ((select id from abs where package = ?), (select id from stat_hosts where name = ?), ?, ?)
+                          on duplicate key update $type = ?", undef, $pkg, $cn, $ts, $value, $value);
     }
 }
 
