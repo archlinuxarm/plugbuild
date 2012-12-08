@@ -17,7 +17,7 @@ use JSON::XS;
 
 our $available = Thread::Semaphore->new(1);
 
-our ($q_svc, $q_db, $q_irc, $q_mir);
+our ($q_svc, $q_db, $q_irc, $q_mir, $q_stats);
 
 sub new {
     my ($class,$config) = @_;
@@ -350,6 +350,14 @@ sub cb_read {
                     
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'release', arch => $data->{arch}, package => $data->{pkgbase} } }]);
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
+                }
+                
+                # system statistics packet
+                #  - ts         => timestamp
+                #  - type       => type of data
+                #  - value      => data value
+                case "stats" {
+                    $q_stats->enqueue(['svc', 'stats', $client->{cn}, $data->{ts}, $data->{type}, $data->{value}]);
                 }
                 
                 # synchronize client state

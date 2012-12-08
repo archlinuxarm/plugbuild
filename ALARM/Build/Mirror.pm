@@ -15,7 +15,7 @@ use DBI;
 
 our $available = Thread::Semaphore->new(1);
 
-our ($q_svc, $q_db, $q_irc, $q_mir);
+our ($q_svc, $q_db, $q_irc, $q_mir, $q_stats);
 
 sub new {
     my ($class,$config) = @_;

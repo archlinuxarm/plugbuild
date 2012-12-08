@@ -7,6 +7,7 @@ use ALARM::Build::Service;
 use ALARM::Build::Database;
 use ALARM::Build::IRC;
 use ALARM::Build::Mirror;
+use ALARM::Build::Stats;
 
 use Config::General qw(ParseConfig);
 use Thread::Queue;
@@ -17,24 +18,35 @@ $ALARM::Build::Service::q_svc = $q_svc;
 $ALARM::Build::Database::q_svc = $q_svc;
 $ALARM::Build::IRC::q_svc = $q_svc;
 $ALARM::Build::Mirror::q_svc = $q_svc;
+$ALARM::Build::Stats::q_svc = $q_svc;
 
 my $q_irc = Thread::Queue->new();
 $ALARM::Build::Service::q_irc = $q_irc;
 $ALARM::Build::Database::q_irc = $q_irc;
 $ALARM::Build::IRC::q_irc = $q_irc;
 $ALARM::Build::Mirror::q_irc = $q_irc;
+$ALARM::Build::Stats::q_irc = $q_irc;
 
 my $q_db = Thread::Queue->new();
 $ALARM::Build::Service::q_db = $q_db;
 $ALARM::Build::Database::q_db = $q_db;
 $ALARM::Build::IRC::q_db = $q_db;
 $ALARM::Build::Mirror::q_db = $q_db;
+$ALARM::Build::Stats::q_db = $q_db;
 
 my $q_mir = Thread::Queue->new();
 $ALARM::Build::Service::q_mir = $q_mir;
 $ALARM::Build::Database::q_mir = $q_mir;
 $ALARM::Build::IRC::q_mir = $q_mir;
 $ALARM::Build::Mirror::q_mir = $q_mir;
+$ALARM::Build::Stats::q_mir = $q_mir;
+
+my $q_stats = Thread::Queue->new();
+$ALARM::Build::Service::q_stats = $q_stats;
+$ALARM::Build::Database::q_stats = $q_stats;
+$ALARM::Build::IRC::q_stats = $q_stats;
+$ALARM::Build::Mirror::q_stats = $q_stats;
+$ALARM::Build::Stats::q_stats = $q_stats;
 
 
 sub new{
@@ -58,12 +70,14 @@ sub Run{
     my $db = $self->Database;
     my $irc = $self->IRC;
     my $mir = $self->Mirror;
+    my $stats = $self->Stats;
     ###
     print "SrvStart\n";
     my $d = threads->create(sub{  $db->Run(); });
     my $s = threads->create(sub{ $svc->Run(); });
     my $i = threads->create(sub{ $irc->Run(); });
     my $m = threads->create(sub{ $mir->Run(); });
+    my $a = threads->create(sub{ $stats->Run(); });
     sleep 1;
     while( threads->list(threads::running) ){
         foreach my $t (threads->list()){
@@ -86,8 +100,13 @@ sub Run{
         }
         if( $ALARM::Build::Mirror::available->down_nb()){
             $ALARM::Build::Mirror::available->up();
-            $svc = $self->Mirror;
+            $mir = $self->Mirror;
             threads->create(sub{ $mir->Run(); });
+        }
+        if( $ALARM::Build::Stats::available->down_nb()){
+            $ALARM::Build::Stats::available->up();
+            $stats = $self->Stats;
+            threads->create(sub{ $stats->Run(); });
         }
 
         sleep 1;
@@ -98,24 +117,29 @@ sub Run{
     print "SrvRunEnd";
 }
 
-sub Service{
+sub Service {
     my $self = shift;
     return new ALARM::Build::Factory('Service',$self->{config}->{server}->{service});
 }
 
-sub Database{
+sub Database {
     my $self = shift;
-    return new ALARM::Build::Factory('Database',$self->{config}->{server}->{database})
+    return new ALARM::Build::Factory('Database',$self->{config}->{server}->{database});
 }
 
-sub IRC{
+sub IRC {
     my $self = shift;
     return new ALARM::Build::Factory('IRC',$self->{config}->{server}->{irc});
 }
 
-sub Mirror{
+sub Mirror {
     my $self = shift;
     return new ALARM::Build::Factory('Mirror',$self->{config}->{server}->{database});
+}
+
+sub Stats {
+    my $self = shift;
+    return new ALARM::Build::Factory('Stats',$self->{config}->{server}->{database});
 }
 
 
