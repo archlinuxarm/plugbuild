@@ -194,25 +194,25 @@ sub cd_read {
                     if ($block->{plugin} eq 'cpu') {
                         next unless ($block->{type_instance} eq "user" || $block->{type_instance} eq "system" || $block->{type_instance} eq "wait");
                         my $type = "$block->{plugin}$block->{plugin_instance}_$block->{type_instance}";
-			push @stats, { command => 'stats', ts => int($block->{time}), type => $type, value => @{$block->{values}}[0] };
+			push @stats, { command => 'stats', ts => int($block->{time}), type => $type, value => @{$block->{values}}[0] || 0 };
                     }
                     if ($block->{plugin} eq 'memory') {
                         next unless ($block->{type_instance} eq 'used');
                         my $value = int(@{$block->{values}}[0] / 1000000);
-			push @stats, { command => 'stats', ts => int($block->{time}), type => 'mem', value => $value };
+			push @stats, { command => 'stats', ts => int($block->{time}), type => 'mem', value => $value || 0 };
                     }
                     if ($block->{plugin} eq 'interface') {
                         next unless ($block->{type} eq 'if_octets');
-			push @stats, { command => 'stats', ts => int($block->{time}), type => 'eth_r', value => @{$block->{values}}[0] };
-			push @stats, { command => 'stats', ts => int($block->{time}), type => 'eth_w', value => @{$block->{values}}[1] };
+			push @stats, { command => 'stats', ts => int($block->{time}), type => 'eth_r', value => @{$block->{values}}[0] || 0 };
+			push @stats, { command => 'stats', ts => int($block->{time}), type => 'eth_w', value => @{$block->{values}}[1] || 0 };
                     }
                     if ($block->{plugin} eq 'disk') {
                         if ($block->{type} eq 'disk_octets') {
-			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_ops_r', value => @{$block->{values}}[0] };
-			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_ops_w', value => @{$block->{values}}[1] };
+			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_ops_r', value => @{$block->{values}}[0] || 0 };
+			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_ops_w', value => @{$block->{values}}[1] || 0 };
                         } elsif ($block->{type} eq 'disk_ops') {
-			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_oct_r', value => @{$block->{values}}[0] };
-			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_oct_w', value => @{$block->{values}}[1] };
+			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_oct_r', value => @{$block->{values}}[0] || 0 };
+			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_oct_w', value => @{$block->{values}}[1] || 0 };
                         }
                     }
                 }
