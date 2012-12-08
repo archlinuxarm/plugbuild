@@ -357,7 +357,13 @@ sub cb_read {
                 #  - type       => type of data
                 #  - value      => data value
                 case "stats" {
-                    $q_stats->enqueue(['svc', 'stats', $client->{cn}, $data->{ts}, $data->{type}, $data->{value}]);
+                    my $pkg = '';
+                    my $arch = '';
+                    if ($client->{state} eq 'building') {
+                        $pkg = $client->{pkgbase};
+                        $arch = $client->{arch};
+                    }
+                    $q_stats->enqueue(['svc', 'stats', $client->{cn}, $data->{ts}, $data->{type}, $data->{value}, $pkg, $arch]);
                 }
                 
                 # synchronize client state

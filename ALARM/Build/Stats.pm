@@ -64,11 +64,34 @@ sub cb_queue {
             
             # service orders
             case "stats" {
-                my ($cn, $ts, $type, $value) = @{$msg}[2,3,4,5];
-                $self->{dbh}->do("insert into stats (host, ts, $type) (select id, ?, ? from stat_hosts where name = ?)", undef, $ts, $value, $cn);
+                $self->log_stat(@{$msg}[2..7]);
             }
         }
     }
+}
+
+sub log_open {
+    my ($self, $cn) = @_;
+    
+    my $self->{$cn} = RRDTool::OO->new(file => "$Bin/rrd/$cn.rrd");
+    
+    # RRD file already exists
+    return if (-f "$Bin/rrd/$cn.rrd");
+    
+    # otherwise, create the file
+    $self->{arch}->create(
+        step        => 10,  # 10 second intervals
+        data_source => { name      => "mydatasource",
+                         type      => "GAUGE" },
+        archive     => { rows      => 5 });
+    
+}
+
+sub log_stat {
+    my ($self, $cn, $ts, $type, $value, $pkg) = @_;
+    
+    $self->log_open if (!defined $self->{$cn});
+    
 }
 
 1;
