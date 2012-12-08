@@ -787,21 +787,26 @@ sub poll {
         
         # warn about git overlay being different and flag hold, or warn of override and remove from queue
         if ($type eq 'abs') {
-            my ($db_pkgver, $db_pkgrel, $db_git, $db_skip, $db_override) = $self->{dbh}->selectrow_array("select pkgver, pkgrel, git, skip, override from abs where package = ?", undef, $pkg);
-            $buildarch = $db_skip;
-            my $db_pkgrel_stripped = $db_pkgrel;    # strip any of our fraction pkgrel numbers
-            $db_pkgrel_stripped =~ s/\.+.*//;
-            if (defined $db_pkgrel && $db_git == 1 && $db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel_stripped") {
-                $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $repo/$pkg is different in overlay, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
-                $hold = 1;
-            } elsif (defined $db_pkgrel && $db_git == 1 && $db_override == 1) {
-                $q_irc->enqueue(['db', 'print', "[poll] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
-                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
-                next;
-            } elsif ($db_git == 1 && "$pkgver-$pkgrel" eq "$db_pkgver-$db_pkgrel_stripped") {
-                $q_irc->enqueue(['db', 'print', "[poll] Detected upstream updates to overlay package with no version bump for $repo/$pkg"]);
-                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
-                next;
+            my ($db_repo, $db_pkgver, $db_pkgrel, $db_git, $db_skip, $db_override) = $self->{dbh}->selectrow_array("select repo, pkgver, pkgrel, git, skip, override from abs where package = ?", undef, $pkg);
+            if ($db_git == 1) {
+                $buildarch = $db_skip;
+                my $db_pkgrel_stripped = $db_pkgrel;    # strip any of our fraction pkgrel numbers
+                $db_pkgrel_stripped =~ s/\.+.*//;
+                if ($db_repo ne $repo) {
+                    $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $db_repo/$pkg has been relocated to $repo/$pkg"]);
+                }
+                if ($db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel_stripped") {
+                    $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $repo/$pkg is different in overlay, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
+                    $hold = 1;
+                } elsif ($db_override == 1) {
+                    $q_irc->enqueue(['db', 'print', "[poll] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
+                    $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+                    next;
+                } elsif ("$pkgver-$pkgrel" eq "$db_pkgver-$db_pkgrel_stripped") {
+                    $q_irc->enqueue(['db', 'print', "[poll] Detected upstream updates to overlay package with no version bump for $repo/$pkg"]);
+                    $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+                    next;
+                }
             }
         }
         # update queue data
@@ -832,7 +837,7 @@ sub process {
     my $hold_total = 0;
     foreach my $row (@$rows) {
         my ($path, $repo, $pkg, $pkgver, $pkgrel, $db_pkgver, $db_pkgrel, $skip, $override, $hold_arches) = @$row;
-        my ($git_path, $git_pkg, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, pkgver, pkgrel from queue where type = 'git' and ref = 1 and package = ?", undef, $pkg);
+        my ($git_path, $git_pkg, $git_repo, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, repo, pkgver, pkgrel from queue where type = 'git' and ref = 1 and package = ?", undef, $pkg);
         if (defined $git_pkg) {
             print "[process] matched git package found for $pkg, determining hold status\n";
             
@@ -842,6 +847,9 @@ sub process {
             
             if ("$pkgver-$pkgrel" ne "$git_pkgver-$git_pkgrel_stripped") {
                 $q_irc->enqueue(['db', 'print', "[process] Holding $repo/$pkg, version mismatch, overlay: $git_pkgver-$git_pkgrel_stripped, new: $pkgver-$pkgrel"]);
+                $self->{dbh}->do("delete from queue where path = ?", undef, $git_path);     # remove bad overlay package from the queue, must be re-committed anyway
+            } elsif ($git_repo ne $repo) {
+                $q_irc->enqueue(['db', 'print', "[process] Holding $repo/$pkg, repo mismatch, overlay: $git_repo, new: $repo"]);
                 $self->{dbh}->do("delete from queue where path = ?", undef, $git_path);     # remove bad overlay package from the queue, must be re-committed anyway
             } else {
                 $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg, overlay matches"]);
@@ -877,10 +885,10 @@ sub process {
                     print "[process] mysql: update abs set abs = 0 where package = $pkg\n";
                 } else {                    # otherwise trash the package
                     $q_irc->enqueue(['db', 'print', "[process] Deleting $repo/$pkg (upstream)"]);
-                    #$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+                    #$self->{dbh}->do("update abs set abs = 0, del = 1 where package = ?", undef, $pkg);
                     #$self->{dbh}->do("delete from names where package = ?", undef, $db_id);
                     #$self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
-                    print "[process] mysql: update abs set del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
+                    print "[process] mysql: update abs set abs = 0, del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
                         #$self->pkg_prep($arch, { pkgbase => $pkg });
                         print "[process] deleting $arch/$pkg\n";
@@ -899,10 +907,10 @@ sub process {
                     print "[process] mysql: update abs set git = 0 where package = $pkg\n";
                 } else {                    # otherwise, trash the package
                     $q_irc->enqueue(['db', 'print', "[process] Deleting $repo/$pkg (overlay)"]);
-                    #$self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+                    #$self->{dbh}->do("update abs set git = 0, abs = 0, del = 1 where package = ?", undef, $pkg);
                     #$self->{dbh}->do("delete from names where package = ?", undef, $db_id);
                     #$self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
-                    print "[process] mysql: update abs set del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
+                    print "[process] mysql: update abs set git = 0, abs = 0, del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
                         #$self->pkg_prep($arch, { pkgbase => $pkg });
                         print "[process] deleting $arch/$pkg\n";
