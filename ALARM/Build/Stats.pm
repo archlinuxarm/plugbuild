@@ -12,6 +12,7 @@ use Switch;
 use FindBin qw($Bin);
 use Text::CSV;
 use DBI;
+use RRDTool::OO;
 
 our $available = Thread::Semaphore->new(1);
 
@@ -51,11 +52,8 @@ sub Run {
 
 sub cb_queue {
     my ($self) = @_;
-    my $msg = $q_stats->dequeue_nb();
-    
-    if ($msg) {
+    while (my $msg = $q_stats->dequeue_nb()) {
         my ($from, $order) = @{$msg};
-        print "Stats: got $order from $from\n";
         switch ($order){
             case "quit" {
                 $available->down_force(10);
@@ -74,13 +72,13 @@ sub cb_queue {
 sub log_open_host {
     my ($self, $cn) = @_;
     
-    my $self->{$cn} = RRDTool::OO->new(file => "$Bin/rrd/$cn.rrd");
+    $self->{$cn} = RRDTool::OO->new(file => "$Bin/rrd/$cn.rrd", raise_error => 0);
     
     # RRD file already exists
     return if (-f "$Bin/rrd/$cn.rrd");
     
     # otherwise, create the file
-    $self->{arch}->create(
+    $self->{$cn}->create(
         step        => 10,  # 10 second intervals
         data_source => { name   => "cpu0_user",     type    => "DERIVE",    min     => 0 },
         data_source => { name   => "cpu0_system",   type    => "DERIVE",    min     => 0 },
@@ -94,7 +92,7 @@ sub log_open_host {
         data_source => { name   => "cpu3_user",     type    => "DERIVE",    min     => 0 },
         data_source => { name   => "cpu3_system",   type    => "DERIVE",    min     => 0 },
         data_source => { name   => "cpu3_wait",     type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "memory",        type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "mem",           type    => "GAUGE",     min     => 0 },
         data_source => { name   => "eth_r",         type    => "DERIVE",    min     => 0 },
         data_source => { name   => "eth_w",         type    => "DERIVE",    min     => 0 },
         data_source => { name   => "sd_ops_r",      type    => "DERIVE",    min     => 0 },
@@ -113,7 +111,7 @@ sub log_stat {
     
     # add data point
     $self->{$cn}->update(time => $ts, values => { $type => $value });
-    
+
     # store package data
     if ($pkg ne '') {
         $self->{dbh}->do("insert into stats (package, host, ts, $type) values ((select id from abs where package = ?), (select id from stat_hosts where name = ?), ?, ?)
