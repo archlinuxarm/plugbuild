@@ -102,7 +102,11 @@ sub log_open_host {
         data_source => { name   => "sd_ops_w",      type    => "GAUGE",     min     => 0 },
         data_source => { name   => "sd_oct_r",      type    => "GAUGE",     min     => 0 },
         data_source => { name   => "sd_oct_w",      type    => "GAUGE",     min     => 0 },
-        archive     => { rows   => 1000,         cpoints    => 60,        cfunc     => "AVERAGE" });
+        archive     => { rows   => 1000,         cpoints    => 60,        cfunc     => "AVERAGE" }, # lower resolution 7 day archive (10 minute averaging)
+        archive     => { rows   => 1000,         cpoints    => 60,        cfunc     => "MAX" },
+        archive     => { rows   => 480,          cpoints    => 18,        cfunc     => "AVERAGE" }, # higher resolution 1 day archive (3 minute averaging)
+        archive     => { rows   => 480,          cpoints    => 18,        cfunc     => "MAX" },
+    );
     
 }
 
@@ -149,7 +153,7 @@ sub log_graph_host {
             y_grid         => '25:4',
             x_grid         => 'HOUR:12:DAY:1:DAY:1:86400:%A',
             slope_mode     => undef,
-            title          => "$host Average CPU and Memory Usage",
+            title          => "$host: Average CPU and Max Memory Usage",
             vertical_label => 'Percentage',
             draw           => { type    => 'hidden',    dsname  => 'cpu0_user',     name    => 'cpu0_user',     cfunc     => 'AVERAGE' },
             draw           => { type    => 'hidden',    dsname  => 'cpu1_user',     name    => 'cpu1_user',     cfunc     => 'AVERAGE' },
@@ -163,7 +167,7 @@ sub log_graph_host {
             draw           => { type    => 'hidden',    dsname  => 'cpu1_wait',     name    => 'cpu1_wait',     cfunc     => 'AVERAGE' },
             draw           => { type    => 'hidden',    dsname  => 'cpu2_wait',     name    => 'cpu2_wait',     cfunc     => 'AVERAGE' },
             draw           => { type    => 'hidden',    dsname  => 'cpu3_wait',     name    => 'cpu3_wait',     cfunc     => 'AVERAGE' },
-            draw           => { type    => 'hidden',    dsname  => 'mem',           name    => 'mem',           cfunc     => 'AVERAGE' },
+            draw           => { type    => 'hidden',    dsname  => 'mem',           name    => 'mem',           cfunc     => 'MAX' },
             draw           => { type    => 'area',      color   => '00FF00',        legend  => 'CPU User',      cdef      => $cdef_user },
             draw           => { type    => 'area',      color   => '0000FF',        legend  => 'CPU System',    cdef      => $cdef_system,  stack  => 1 },
             draw           => { type    => 'area',      color   => 'FF0000',        legend  => 'CPU Wait',      cdef      => $cdef_wait,    stack  => 1 },
