@@ -20,7 +20,7 @@ my %config = ParseConfig("$Bin/client.conf");
 my $workroot    = "$Bin/work";
 my $pkgdest     = "$Bin/pkgdest";
 my $cacheroot   = "$Bin/cache";
-my $workurl     = "http://dev.archlinuxarm.org/builder/work";
+my $workurl     = "http://archlinuxarm.org/builder/work";
 
 my $md5 = hash_script();
 
@@ -31,7 +31,10 @@ my %files;
 my $current_filename;
 my $current_fh;
 my $uploading = 0;
-my @stats;
+my %stats;
+my @types = ('cpu0_user', 'cpu0_system', 'cpu0_wait', 'cpu1_user', 'cpu1_system', 'cpu1_wait',
+             'cpu2_user', 'cpu2_system', 'cpu2_wait', 'cpu3_user', 'cpu3_system', 'cpu3_wait',
+             'mem', 'eth_r', 'eth_w', 'sd_ops_r', 'sd_ops_w', 'sd_oct_r', 'sd_oct_w');
 
 # cache setup
 #`rm -rf $cacheroot`;
@@ -194,25 +197,25 @@ sub cd_read {
                     if ($block->{plugin} eq 'cpu') {
                         next unless ($block->{type_instance} eq "user" || $block->{type_instance} eq "system" || $block->{type_instance} eq "wait");
                         my $type = "$block->{plugin}$block->{plugin_instance}_$block->{type_instance}";
-			push @stats, { command => 'stats', ts => int($block->{time}), type => $type, value => @{$block->{values}}[0] || 0 };
+                        $stats{int($block->{time})}{$type} = @{$block->{values}}[0] || 0;
                     }
                     if ($block->{plugin} eq 'memory') {
                         next unless ($block->{type_instance} eq 'used');
                         my $value = int(@{$block->{values}}[0] / 1000000);
-			push @stats, { command => 'stats', ts => int($block->{time}), type => 'mem', value => $value || 0 };
+                        $stats{int($block->{time})}{'mem'} = $value || 0;
                     }
                     if ($block->{plugin} eq 'interface') {
                         next unless ($block->{type} eq 'if_octets');
-			push @stats, { command => 'stats', ts => int($block->{time}), type => 'eth_r', value => @{$block->{values}}[0] || 0 };
-			push @stats, { command => 'stats', ts => int($block->{time}), type => 'eth_w', value => @{$block->{values}}[1] || 0 };
+                        $stats{int($block->{time})}{'eth_r'} = @{$block->{values}}[0] || 0;
+                        $stats{int($block->{time})}{'eth_w'} = @{$block->{values}}[1] || 0;
                     }
                     if ($block->{plugin} eq 'disk') {
                         if ($block->{type} eq 'disk_octets') {
-			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_ops_r', value => @{$block->{values}}[0] || 0 };
-			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_ops_w', value => @{$block->{values}}[1] || 0 };
+                            $stats{int($block->{time})}{'sd_oct_r'} = @{$block->{values}}[0] || 0;
+                            $stats{int($block->{time})}{'sd_oct_w'} = @{$block->{values}}[1] || 0;
                         } elsif ($block->{type} eq 'disk_ops') {
-			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_oct_r', value => @{$block->{values}}[0] || 0 };
-			    push @stats, { command => 'stats', ts => int($block->{time}), type => 'sd_oct_w', value => @{$block->{values}}[1] || 0 };
+                            $stats{int($block->{time})}{'sd_ops_r'} = @{$block->{values}}[0] || 0;
+                            $stats{int($block->{time})}{'sd_ops_w'} = @{$block->{values}}[1] || 0;
                         }
                     }
                 }
@@ -227,10 +230,13 @@ sub cd_read {
 
 # push collectd stats to plugbuild
 sub cd_push {
-    if ($uploading == 0 && scalar(@stats)) {
-	foreach my $stat (@stats) {
-	    $h->push_write(json => $stat);
-	}
+    if ($uploading == 0 && scalar(keys %stats) > 3) {
+        my $ts = (sort keys %stats)[0];
+        foreach my $type (@types) {
+            $stats{$ts}{$type} = 0 unless defined $stats{$ts}{$type};
+        }
+        $h->push_write(json => { command => 'stats', ts => $ts, data => $stats{$ts} });
+        delete $stats{$ts};
     }
 }
 

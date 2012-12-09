@@ -80,43 +80,43 @@ sub log_open_host {
     # otherwise, create the file
     $self->{$cn}->create(
         step        => 10,  # 10 second intervals
-        data_source => { name   => "cpu0_user",     type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu0_system",   type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu0_wait",     type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu1_user",     type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu1_system",   type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu1_wait",     type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu2_user",     type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu2_system",   type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu2_wait",     type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu3_user",     type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu3_system",   type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "cpu3_wait",     type    => "DERIVE",    min     => 0 },
+        data_source => { name   => "cpu0_user",     type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu0_system",   type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu0_wait",     type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu1_user",     type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu1_system",   type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu1_wait",     type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu2_user",     type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu2_system",   type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu2_wait",     type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu3_user",     type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu3_system",   type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "cpu3_wait",     type    => "GAUGE",     min     => 0 },
         data_source => { name   => "mem",           type    => "GAUGE",     min     => 0 },
-        data_source => { name   => "eth_r",         type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "eth_w",         type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "sd_ops_r",      type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "sd_ops_w",      type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "sd_oct_r",      type    => "DERIVE",    min     => 0 },
-        data_source => { name   => "sd_oct_w",      type    => "DERIVE",    min     => 0 },
+        data_source => { name   => "eth_r",         type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "eth_w",         type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "sd_ops_r",      type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "sd_ops_w",      type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "sd_oct_r",      type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "sd_oct_w",      type    => "GAUGE",     min     => 0 },
         archive     => { rows   => 1000,         cpoints    => 60,        cfunc     => "AVERAGE" });
     
 }
 
 sub log_stat {
-    my ($self, $cn, $ts, $type, $value, $pkg) = @_;
+    my ($self, $cn, $ts, $data, $pkg, $arch) = @_;
     
     # open host averaging log
     $self->log_open_host($cn) if (!defined $self->{$cn});
     
     # add data point
-    $self->{$cn}->update(time => $ts, values => { $type => $value });
-
+    $self->{$cn}->update(time => $ts, values => $data);
+    
     # store package data
-    if ($pkg ne '') {
-        $self->{dbh}->do("insert into stats (package, host, ts, $type) values ((select id from abs where package = ?), (select id from stat_hosts where name = ?), ?, ?)
-                          on duplicate key update $type = ?", undef, $pkg, $cn, $ts, $value, $value);
-    }
+    #if ($pkg ne '') {
+    #    $self->{dbh}->do("insert into stats (package, host, ts, $type) values ((select id from abs where package = ?), (select id from stat_hosts where name = ?), ?, ?)
+    #                      on duplicate key update $type = ?", undef, $pkg, $cn, $ts, $value, $value);
+    #}
 }
 
 1;

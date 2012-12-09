@@ -363,7 +363,7 @@ sub cb_read {
                         $pkg = $client->{pkgbase};
                         $arch = $client->{arch};
                     }
-                    $q_stats->enqueue(['svc', 'stats', $client->{cn}, $data->{ts}, $data->{type}, $data->{value}, $pkg, $arch]);
+                    $q_stats->enqueue(['svc', 'stats', $client->{cn}, $data->{ts}, $data->{data}, $pkg, $arch]);
                 }
                 
                 # synchronize client state
