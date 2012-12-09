@@ -878,6 +878,15 @@ sub process {
         }
     }
     
+    # handle cross-source repo relocations
+    $rows = $self->{dbh}->selectall_arrayref("select a.package, a.repo, b.repo, b.path from queue as a inner join queue as b on (a.package = b.package and b.del = 1) where a.del = 0");
+    foreach my $row (@$rows) {
+        my ($pkg, $newrepo, $oldrepo, $path) = @$row;
+        
+        print "[process] cross-source repo relocation of $pkg from $oldrepo to $newrepo, dropping $oldrepo entry from queue\n";
+        $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+    }
+    
     # process non-holds into abs and arch tables
     $rows = $self->{dbh}->selectall_arrayref("select * from queue where ref = 1 and hold = 0");
     foreach my $row (@$rows) {
@@ -885,12 +894,14 @@ sub process {
         
         # handle deleted package
         if ($del == 1) {
-            my ($db_id, $db_git, $db_abs) = $self->{dbh}->selectrow_array("select id, git, abs from abs where package = ?", undef, $pkg);
+            my ($db_id, $db_repo, $db_git, $db_abs) = $self->{dbh}->selectrow_array("select id, repo, git, abs from abs where package = ?", undef, $pkg);
             if (-d $path) {                 # not actually deleted, reprocess
                 $self->{dbh}->do("update queue set ref = 0, del = 0 where path = ?", undef, $path);
                 next;
             }
-            if ($type eq 'abs') {
+            if ($db_repo ne $repo) {        # don't delete a package that exists in a different repo now
+                print "[process] not deleting $repo/$pkg, exists in repo $db_repo now, dropping from queue\n";
+            } elsif ($type eq 'abs') {
                 if ($db_git == 1) {         # warn us that upstream has trashed something we track, adjust abs flag
                     $q_irc->enqueue(['db', 'print', "[process] Upstream has removed $repo/$pkg, also tracked in overlay"]);
                     #$self->{dbh}->do("update abs set abs = 0 where package = ?", undef, $pkg);
