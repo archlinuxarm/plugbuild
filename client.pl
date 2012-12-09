@@ -230,13 +230,15 @@ sub cd_read {
 
 # push collectd stats to plugbuild
 sub cd_push {
-    if ($uploading == 0 && scalar(keys %stats) > 3) {
-        my $ts = (sort keys %stats)[0];
-        foreach my $type (@types) {
-            $stats{$ts}{$type} = 0 unless defined $stats{$ts}{$type};
+    if ($uploading == 0) {
+        while (scalar(keys %stats) > 3) {
+            my $ts = (sort keys %stats)[0];
+            foreach my $type (@types) {
+                $stats{$ts}{$type} = 0 unless defined $stats{$ts}{$type};
+            }
+            $h->push_write(json => { command => 'stats', ts => $ts, data => $stats{$ts} });
+            delete $stats{$ts};
         }
-        $h->push_write(json => { command => 'stats', ts => $ts, data => $stats{$ts} });
-        delete $stats{$ts};
     }
 }
 
