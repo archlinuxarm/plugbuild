@@ -724,7 +724,7 @@ sub poll {
         # pull, get HEAD sha
         my $newsha = `git --work-tree=$root --git-dir=$root/.git pull -q && git --work-tree=$root --git-dir=$root/.git rev-parse HEAD`;
         if ($? >> 8) {
-            q_irc->enqueue(['db','print',"[poll] Failed to poll source ($id) type: $type, root: $root"]);
+            $q_irc->enqueue(['db','print',"[poll] Failed to poll source ($id) type: $type, root: $root"]);
             next;
         }
         chomp $newsha;
