@@ -123,6 +123,8 @@ sub log_stat {
 }
 
 sub log_graph_host {
+    my ($self) = @_;
+    
     foreach my $host (keys %{$self->{host}}) {
         # build cdef for combined CPU usage
         my ($cpus) = $self->{dbh}->selectrow_array("select cpus from stat_hosts where name = ?", undef, $host);
