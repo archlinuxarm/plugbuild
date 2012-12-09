@@ -136,9 +136,9 @@ sub log_graph_host {
         my $cdef_system = "cpu0_system,";
         my $cdef_wait = "cpu0_wait,";
         for (my $i = 1; $i < $cpus; $i++) {
-            $cdef_user .= "cpu" . $i . "_user,+";
-            $cdef_system .= "cpu" . $i . "_system,+";
-            $cdef_wait .= "cpu" . $i . "_wait,+";
+            $cdef_user .= "cpu" . $i . "_user,+,";
+            $cdef_system .= "cpu" . $i . "_system,+,";
+            $cdef_wait .= "cpu" . $i . "_wait,+,";
         }
         $cdef_user .= "$cpus,/";
         $cdef_system .= "$cpus,/";
