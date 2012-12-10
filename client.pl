@@ -497,7 +497,7 @@ sub cb_add {
     } else {
         print " -> finished uploading, sending done\n";
 	# send any stats first to count toward this build
-        uploading = 0;
+        $uploading = 0;
 	cd_push();
 	# then send done
         $state->{command} = 'done';
