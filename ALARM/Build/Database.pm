@@ -1001,7 +1001,7 @@ sub process {
         ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
         #$self->{dbh}->do("delete from names where package = ?", $db_id);
         #$self->{dbh}->do("delete from deps where id = ?", $db_id);
-        print "[process] $pkg: delete from names/deps there package/id = $db_id\n";
+        print "[process] $pkg: delete from names/deps where package/id = $db_id\n";
         my @names = split(/ /, join(' ', $pkgname, $provides));
         my %deps;
         

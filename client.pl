@@ -309,8 +309,9 @@ sub cb_read {
             }
         }
         case "uploaded" {
-	    $uploading = 0;
             if ($state->{command} eq "fail") { # we're done, just uploaded a log
+                $uploading = 0;
+                cd_push();
                 $handle->push_write(json => $state);
                 delete $files{$current_filename};
                 undef $current_filename;
@@ -496,6 +497,7 @@ sub cb_add {
     } else {
         print " -> finished uploading, sending done\n";
 	# send any stats first to count toward this build
+        uploading = 0;
 	cd_push();
 	# then send done
         $state->{command} = 'done';
