@@ -735,16 +735,16 @@ sub poll {
         # get changed directories
         if ($type eq 'git') {       # git overlay: repo/package
             @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-2 | sort -u`;
-            if ($? >> 8) {
-                $q_irc->enqueue(['db','print',"[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
-                next;
-            }
+            #if ($? >> 8) {
+            #    $q_irc->enqueue(['db','print',"[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
+            #    next;
+            #}
         } elsif ($type eq 'abs') {  # upstream: package
             @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-3 | sort -u | egrep '.*/(core|extra|community)-(i686|any)'`;
-            if ($? >> 8) {
-                $q_irc->enqueue(['db','print',"[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
-                next;
-            }
+            #if ($? >> 8) {
+            #    $q_irc->enqueue(['db','print',"[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
+            #    next;
+            #}
         } else {                    # skip bad entries
             $q_irc->enqueue(['db','print',"[poll] Unknown source ($id) type: $type, root: $root"]);
             next;
