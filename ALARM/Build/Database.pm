@@ -849,9 +849,16 @@ sub process {
     my $hold_total = 0;
     foreach my $row (@$rows) {
         my ($path, $repo, $pkg, $pkgver, $pkgrel, $db_pkgver, $db_pkgrel, $skip, $override, $hold_arches) = @$row;
-        my ($git_path, $git_pkg, $git_repo, $git_pkgver, $git_pkgrel) = $self->{dbh}->selectrow_array("select path, package, repo, pkgver, pkgrel from queue where type = 'git' and ref = 1 and package = ?", undef, $pkg);
+        my ($git_path, $git_pkg, $git_repo, $git_pkgver, $git_pkgrel, $git_del) = $self->{dbh}->selectrow_array("select path, package, repo, pkgver, pkgrel, del from queue where type = 'git' and ref = 1 and package = ?", undef, $pkg);
         if (defined $git_pkg) {
             print "[process] matched git package found for $pkg, determining hold status\n";
+            
+            if ($git_del == 1) {
+                $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg, overlay version deleted"]);
+                $self->{dbh}->do("delete from queue where path = ?", undef, $git_path);     # remove deleted overlay package from queue
+                $self->{dbh}->do("update queue set hold = 0 where path = ?", undef, $path); # remove hold on upstream package
+                next;
+            }
             
             # ALARM pkgrel bumps are tracked as fractional pkgrel numbers, strip that to determine actual differences
             my $git_pkgrel_stripped = $git_pkgrel;
