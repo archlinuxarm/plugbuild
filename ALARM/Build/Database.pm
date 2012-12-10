@@ -857,6 +857,8 @@ sub process {
                 $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg, overlay version deleted"]);
                 $self->{dbh}->do("delete from queue where path = ?", undef, $git_path);     # remove deleted overlay package from queue
                 $self->{dbh}->do("update queue set hold = 0 where path = ?", undef, $path); # remove hold on upstream package
+                #$self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
+                print "[process] mysql: update abs set git = 0 where package = $pkg\n";
                 next;
             }
             
