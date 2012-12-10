@@ -928,13 +928,6 @@ sub process {
                 }
             } elsif ($type eq 'git') {
                 if ($db_abs == 1) {         # switch to abs, no rebuilding but remove any holds to release upstream replacement
-                    my ($abs_hold) = $self->{dbh}->selectrow_array("select hold from queue where ref = 1 and hold = 1 and type = 'abs' and package = ?", undef, $pkg);
-                    if (defined $abs_hold && $abs_hold == 1) {
-                        $self->{dbh}->do("update queue set hold = 0 where type = 'abs' and package = ?", undef, $pkg);
-                        $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg, overlay version deleted"]);
-                    } else {
-                        $q_irc->enqueue(['db', 'print', "[process] Removed overlay of $repo/$pkg, using upstream package"]);
-                    }
                     #$self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
                     print "[process] mysql: update abs set git = 0 where package = $pkg\n";
                 } else {                    # otherwise, trash the package
