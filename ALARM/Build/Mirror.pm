@@ -109,12 +109,12 @@ sub update {
     close (MYFILE); 
     
     # only push to Tier 1 mirrors
-    my $rows = $self->{dbh}->selectall_arrayref("select id, address from mirrors where tier = 1");
+    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain from mirrors where tier = 1");
     foreach my $row (@$rows) {
-        my ($id, $mirror) = @$row;
+        my ($id, $mirror, $domain) = @$row;
         `rsync -4rlt --delete $self->{packaging}->{repo}->{$arch} $mirror`;
         if ($? >> 8) {
-            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $mirror"]);
+            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $domain"]);
             $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
             next;
         }
