@@ -513,7 +513,13 @@ sub pkg_add {
     $q_svc->enqueue(['db', 'farm', 'add', $arch, $repo, $filename]);
     system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.db.tar.gz $self->{packaging}->{repo}->{$arch}/$repo/$filename");
     if ($? >> 8) {
-        print "    -> move failed\n";
+        print "    -> repo-add failed\n";
+        return 1;
+    }
+    
+    system("$self->{packaging}->{archbin}/repo-add -q -f $self->{packaging}->{repo}->{$arch}/$repo/$repo.files.tar.gz $self->{packaging}->{repo}->{$arch}/$repo/$filename");
+    if ($? >> 8) {
+        print "    -> repo-add -f failed\n";
         return 1;
     }
     
@@ -535,6 +541,7 @@ sub pkg_prep {
         # remove pkgname from repo.db
         $q_svc->enqueue(['db', 'farm', 'remove', $arch, $repo, $pkgname]);
         system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.db.tar.gz $pkgname");
+        system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.files.tar.gz $pkgname");
         
         # remove file
         $q_svc->enqueue(['db', 'farm', 'delete', $arch, $repo, $filename]);
@@ -556,6 +563,7 @@ sub pkg_relocate {
         # remove from old repo.db
         $q_svc->enqueue(['db', 'farm', 'remove', $arch, $oldrepo, $pkgname]);
         system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$oldrepo/$oldrepo.db.tar.gz $pkgname");
+        system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$oldrepo/$oldrepo.files.tar.gz $pkgname");
         
         # move file
         $q_svc->enqueue(['db', 'farm', 'move', $arch, [$oldrepo, $newrepo], $filename]);
@@ -564,6 +572,7 @@ sub pkg_relocate {
         # add to new repo.db
         $q_svc->enqueue(['db', 'farm', 'add', $arch, $newrepo, $filename]);
         system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{$arch}/$newrepo/$newrepo.db.tar.gz $self->{packaging}->{repo}->{$arch}/$newrepo/$filename");
+        system("$self->{packaging}->{archbin}/repo-add -q -f $self->{packaging}->{repo}->{$arch}/$newrepo/$newrepo.files.tar.gz $self->{packaging}->{repo}->{$arch}/$newrepo/$filename");
         
         # update files table
         $self->{dbh}->do("update files set repo = ? where id = ?", undef, $newrepo, $id);
