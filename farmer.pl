@@ -23,7 +23,7 @@ my $w = AnyEvent->signal(signal => "INT", cb => sub { $condvar->broadcast; });
 my $timer_retry;
 
 # serial setup for power control
-my $serial = new Device::SerialPort("/dev/ttyUSB0");
+my $serial = new Device::SerialPort("/dev/ttyACM0");
 $serial->baudrate(9600);
 $serial->parity("none");
 $serial->databits(8);

@@ -279,7 +279,6 @@ sub cb_read {
             }
         }
         case "open" {
-	    $uploading = 1;
             $handle->on_drain(sub { cb_upload(@_); });
             cb_upload();
         }
@@ -370,6 +369,7 @@ sub build_finish {
     my %reply;
     
     $childpid = 0;
+    $uploading = 1;
     
     # build failed
     if ($status) {
