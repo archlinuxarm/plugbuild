@@ -76,6 +76,9 @@ sub cb_queue {
             }
             
             # service orders
+	    case "os" {
+		$self->os();
+	    }
             case "push" {
                 my ($address, $cn) = @{$msg}[2,3];
                 print "Mirror: pushing to $address\n";
@@ -126,6 +129,22 @@ sub update {
     undef $self->{$arch};
     AnyEvent->now_update;
     $self->{$arch} = AnyEvent->timer(after => 120, cb => sub { $self->tier2($arch, $sync); });
+}
+
+# synchronize root filesystems
+sub os {
+    my ($self) = @_;
+    
+    # only push to os mirrors
+    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain from mirrors where os = 1");
+    foreach my $row (@$rows) {
+        my ($id, $mirror, $domain) = @$row;
+        `rsync -rlt --delete $self->{packaging}->{repo}->{os} $mirror`;
+        if ($? >> 8) {
+            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror rootfs to $domain"]);
+        }
+    }
+    $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring rootfs"]);
 }
 
 # check Tier 2 mirrors for synchronization

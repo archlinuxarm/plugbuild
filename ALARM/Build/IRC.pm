@@ -205,6 +205,9 @@ sub cb_publicmsg {
             case "!mirrors" {
                 $q_mir->enqueue(['irc', 'list']);
             }
+            case "!os" {
+                $q_mir->enqueue(['irc', 'os']);
+            }
             case "!override" {
                 my ($pkg) = split(/ /, $arg, 2);
                 if (!$pkg) {
