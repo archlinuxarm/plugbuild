@@ -977,8 +977,8 @@ sub process {
         }
         
         # update abs table
-        my $is_git = $type eq 'git' ? 1 : $db_git;
-        my $is_abs = $type eq 'abs' ? 1 : $db_abs;
+        my $is_git = $type eq 'git' ? 1 : $db_git || 0;
+        my $is_abs = $type eq 'abs' ? 1 : $db_abs || 0;
         my $is_skip = $type eq 'git' ? $skip : defined $db_skip ? $db_skip : 1;
         my $is_highmem = $type eq 'git' ? $highmem : defined $db_highmem ? $db_highmem : 0;
         my $is_done = $noautobuild ? 1 : 0; # noautobuild set, assume built, done = 1
