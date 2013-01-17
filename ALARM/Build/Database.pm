@@ -792,7 +792,7 @@ sub poll {
             $self->{dbh}->do("update queue set hold = 0, del = 1, ref = 1 where path = ?", undef, $path);
             next;
         }
-        if ($path =~ /.*\-lts#/) {  # skip LTS packages, remove from queue
+        if ($pkg =~ /.*\-lts#/) {  # skip LTS packages, remove from queue
             $self->{dbh}->do("delete from queue where path = ?", undef, $path);
             next; 
         }
