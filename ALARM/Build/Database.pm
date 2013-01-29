@@ -416,9 +416,9 @@ sub status {
     
     if (defined($package) && $package ne '') {
         foreach my $arch (sort keys %{$self->{arch}}) {
-            my @row = $self->{dbh}->selectrow_array("select abs.id, package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, override, del, finish - start as time from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
+            my @row = $self->{dbh}->selectrow_array("select abs.id, package, pkgname, repo, pkgver, pkgrel, done, fail, builder, git, abs, skip, highmem, override, del, start, finish from abs inner join $arch as a on (abs.id = a.id) where package = ?", undef, $package);
             if ($row[0]) { # package found
-                my ($id, $name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $override, $del, $time) = @row;
+                my ($id, $name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $override, $del, $start, $finish) = @row;
                 
                 # add to combined skipped architecture printout at end
                 if (!($skip & $self->{skip}->{$arch})) {
@@ -444,10 +444,19 @@ sub status {
                 $state = 'building' if ($builder && $state eq 'unbuilt');
                 
                 my $source = ($git?'git':($abs?'abs':'???'));
-                my $s; my $duration = (($s=int($time/86400))?$s."d":'') . (($s=int(($time%86400)/3600))?$s."h":'') . (($s=int(($time%3600)/60))?$s."m":'') . (($s = $time%60)?$s."s":'');
                 my $status = "[$arch]$highmem$override $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
                 $status .= ", builder=>$builder" if $state eq 'building';
-                $status .= ", time=>$duration" if $state ne 'building';
+                
+                my $time = $start - $finish;
+                if ($state ne 'building') {
+                    if ($time < 0 || $time > 172800) {
+                        # ignore if negative duration or greater than 2 days
+                        $status .= ", time=>???";
+                    } else {
+                        my $s; my $duration = (($s=int($time/86400))?$s."d":'') . (($s=int(($time%86400)/3600))?$s."h":'') . (($s=int(($time%3600)/60))?$s."m":'') . (($s = $time%60)?$s."s":'');
+                        $status .= ", time=>$duration";
+                    }
+                }
                 
                 # generate list of packages blocking this package from building
                 my $names;
