@@ -207,6 +207,7 @@ sub cb_publicmsg {
             }
             case "!os" {
                 $q_mir->enqueue(['irc', 'os']);
+                $self->irc_priv_print("[os] queued rootfs updates");
             }
             case "!override" {
                 my ($pkg) = split(/ /, $arg, 2);
