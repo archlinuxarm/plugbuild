@@ -447,7 +447,7 @@ sub status {
                 my $status = "[$arch]$highmem$override $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
                 $status .= ", builder=>$builder" if $state eq 'building';
                 
-                my $time = $start - $finish;
+                my $time = $finish - $start;
                 if ($state ne 'building') {
                     if ($time < 0 || $time > 172800) {
                         # ignore if negative duration or greater than 2 days
