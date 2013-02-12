@@ -138,7 +138,7 @@ sub gh_accept {
     return unless $fh;
     
     # only accept connections from defined GitHub public service IPs
-    if (!grep {$_ eq $address} ('207.97.227.253', '50.57.128.197', '108.171.174.178', '50.57.231.61')) {
+    if (!grep {$_ eq $address} ('207.97.227.253', '50.57.128.197', '108.171.174.178', '50.57.231.61', '54.235.183.49', '54.235.183.23', '54.235.118.251', '54.235.120.57', '54.235.120.61', '54.235.120.62')) {
         close $fh;
         return;
     }
