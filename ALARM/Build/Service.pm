@@ -132,13 +132,25 @@ sub node_accept {
     $self->{clientsref}->{"admin/nodejs"} = $h;
 }
 
+# validate GitHub WebHook connecting IP address against given list
+sub gh_check {
+    my ($self, $address) = @_;
+    
+    my @allowed = ("207.97.227.253/32", "50.57.128.197/32", "108.171.174.178/32", "50.57.231.61/32", "204.232.175.64/27", "192.30.252.0/22");
+    foreach my $cidr (@allowed) {
+        my ($host, $net) = split(/\//, $cidr);
+        return 0 if !((unpack('N', pack('C4', (split '\.', $address))) & ((2**$net)-1)<<(32-$net)) ^ (unpack('N', pack('C4', (split '\.', $host))) & ((2**$net)-1)<<(32-$net)));
+    }
+    return 1;
+}
+
 # callback for accepting GitHub WebHook connection
 sub gh_accept {
     my ($self, $fh, $address) = @_;
     return unless $fh;
     
     # only accept connections from defined GitHub public service IPs
-    if (!grep {$_ eq $address} ('207.97.227.253', '50.57.128.197', '108.171.174.178', '50.57.231.61', '54.235.183.49', '54.235.183.23', '54.235.118.251', '54.235.120.57', '54.235.120.61', '54.235.120.62')) {
+    if ($self->gh_check($address)) {
         close $fh;
         return;
     }
