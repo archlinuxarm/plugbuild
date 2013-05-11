@@ -240,7 +240,7 @@ sub _check {
         $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $domain"]) if ($ret == 1);
         
         # update mirrors table and log
-        $self->{dbh}->do("update mirrors set active = ? where id = ?", undef, $ret, $id);
+        $self->{dbh}->do("update mirrors set active = ? where id = ?", undef, $ret ? 0 : 1, $id);
         $self->{dbh}->do("insert into mirror_log (id, sent, speed, time, fail) values (?, ?, ?, ?, ?)", undef, $id, $sent, $speed, $time, $ret);
         
         # decrement and check number of mirrors left to rsync for this architecture
