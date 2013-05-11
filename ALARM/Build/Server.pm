@@ -80,9 +80,9 @@ sub Run{
     my $a = threads->create(sub{ $stats->Run(); });
     sleep 1;
     while( threads->list(threads::running) ){
-        foreach my $t (threads->list()){
-            $t->join() if $t->is_joinable(); 
-        }
+        #foreach my $t (threads->list()){
+        #    $t->join() if $t->is_joinable(); 
+        #}
         if( $ALARM::Build::IRC::available->down_nb()){
             $ALARM::Build::IRC::available->up();
             $irc = $self->IRC;

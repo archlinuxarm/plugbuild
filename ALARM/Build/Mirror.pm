@@ -188,7 +188,7 @@ sub queue {
     # queue tier 1 mirrors
     my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain, ?, ? from mirrors where tier = 1", undef, $arch, $self->{packaging}->{repo}->{$arch});
     foreach my $row (@$rows) {
-        push $self->{queue}, $row;
+        push @{$self->{queue}}, $row;
         $self->{$arch}->{count}++;
     }
     
@@ -229,8 +229,10 @@ sub sync {
 sub _check {
     my ($self) = @_;
     
-    foreach my $thr (threads->list(threads::joinable)) {
+    for (my $i = 0; my $thr = @{$self->{thread_list}}[$i]; $i++) {
+        next unless $thr->is_joinable();
         my ($id, $ret, $arch, $domain, $sent, $speed, $time) = $thr->join();
+        splice(@{$self->{thread_list}}, $i, 1);
         
         # decrement current rsync thread count, stop timer if zero
         undef $self->{rsync_timer} if (--$self->{threads} == 0);
@@ -263,6 +265,7 @@ sub _spawn {
     for (; $self->{threads} < $self->{threads_max} && scalar(@{$self->{queue}}); $self->{threads}++) {
         my $args = pop $self->{queue};
         my ($thr) = threads->create(\&_rsync, @$args);
+        push @{$self->{thread_list}}, $thr;
     }
     
     # check rsync thread completion every 5 seconds
