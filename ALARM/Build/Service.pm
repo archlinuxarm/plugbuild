@@ -479,6 +479,7 @@ sub gh_read {
             sub {
                 my ($h, $data) = @_;
                 
+                $data =~ s/\+/\%20/g;
                 $data =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
                 my $json = decode_json $data;
                 foreach my $commit (@{$json->{commits}}) {
