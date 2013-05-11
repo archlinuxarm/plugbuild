@@ -414,7 +414,7 @@ sub cb_read {
                 # sync farmer - rsync push
                 #  - address    => address to push to
                 case "sync" {
-                    $q_mir->enqueue(['svc', 'push', $data->{address}, $client->{cn}]);
+                    $q_mir->enqueue(['svc', 'sync', $data->{address}, $client->{cn}]);
                     $client->{ready} = 0;
                 }
             }
@@ -758,7 +758,7 @@ sub check_complete {
     }
     if ($total && $count == $total) {
         $q_irc->enqueue(['svc','print',"[complete] found no package to issue for $arch, mirroring"]);
-        $q_mir->enqueue(['svc', 'update', $arch]);
+        $q_mir->enqueue(['svc', 'queue', $arch]);
         $self->{$arch} = 'stop';
     }
 }

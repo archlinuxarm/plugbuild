@@ -8,10 +8,10 @@ use strict;
 package ALARM::Build::Mirror;
 use Thread::Queue;
 use Thread::Semaphore;
-use Switch;
 use FindBin qw($Bin);
 use Text::CSV;
 use DBI;
+use threads;
 
 our $available = Thread::Semaphore->new(1);
 
@@ -28,7 +28,7 @@ sub new {
 sub Run {
     my $self = shift;
     
-	return if (! $available->down_nb());
+    return if (! $available->down_nb());
     print "Mirror Run\n";
     
     my $db = DBI->connect("dbi:mysql:$self->{mysql}", "$self->{user}", "$self->{pass}", {RaiseError => 0, AutoCommit => 1, mysql_auto_reconnect => 1});
@@ -39,139 +39,43 @@ sub Run {
         return -1;
     }
     
+    $self->{threads} = 0;       # current number of rsync threads
+    $self->{threads_max} = 5;   # maximum number of rsync threads
+    
     $self->{condvar} = AnyEvent->condvar;
-    $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
+    $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->_cb_queue(); });
     $self->{condvar}->wait;
     
     $db->disconnect;
     
     print "Mirror End\n";
-    return -1;
 }
 
-sub cb_queue {
+sub _cb_queue {
     my ($self) = @_;
+    
+    # dequeue next message
     my $msg = $q_mir->dequeue_nb();
+    return unless $msg;
     
-    if ($msg) {
-        my ($from, $order) = @{$msg};
-        print "Mirror: got $order from $from\n";
-        switch ($order){
-            case "quit" {
-                $available->down_force(10);
-                $self->{condvar}->broadcast;
-            }
-            
-            # IRC orders
-            case "list" {
-                $q_irc->enqueue(['db', 'print', "Mirror list:"]);
-                my $rows = $self->{dbh}->selectall_arrayref("select domain, active, tier from mirrors where tier > 0 order by tier");
-                foreach my $row (@$rows) {
-                    my ($domain, $active, $tier) = @$row;
-                    $q_irc->enqueue(['db', 'print', sprintf(" - T%s [%s] %s", $tier, $active?" active ":"inactive", $domain)]);
-                }
-            }
-            case "refresh" {
-                $self->geoip_refresh();
-            }
-            
-            # service orders
-	    case "os" {
-		$self->os();
-	    }
-            case "push" {
-                my ($address, $cn) = @{$msg}[2,3];
-                print "Mirror: pushing to $address\n";
-                foreach my $arch ('armv5', 'armv6', 'armv7') {
-                    `rsync -4rlt --delete $self->{packaging}->{repo}->{$arch} $address`;
-                    if ($? >> 8) {
-                        print "Mirror: failed to push $arch to $address: $!\n";
-                    } else {
-                        print "Mirror: successfully pushed $arch to $address\n";
-                    }
-                }
-                $q_svc->enqueue(['mir', 'sync', $cn]) if defined $cn;
-            }
-            case "update" {
-                my $arch = @{$msg}[2];
-                $self->update($arch);
-            }
-        }
+    my ($from, $order) = @{$msg};
+    print "Mirror: got $order from $from\n";
+    
+    # run named method with provided args
+    if ($self->can($order)) {
+        $self->$order(@{$msg}[2..$#{$msg}]);
+    } else {
+        print "Mirror: no method: $order\n";
     }
 }
 
-# update mirrors for a given architecture
-sub update {
-    my ($self, $arch) = @_;
-    my $sync = time();
-    print "Mirror: updating $arch\n";
-    
-    # update sync file
-    open (MYFILE, '>', "$self->{packaging}->{repo}->{$arch}/sync");
-    print MYFILE "$sync";
-    close (MYFILE); 
-    
-    # only push to Tier 1 mirrors
-    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain from mirrors where tier = 1");
-    foreach my $row (@$rows) {
-        my ($id, $mirror, $domain) = @$row;
-        `rsync -rlt --delete $self->{packaging}->{repo}->{$arch} $mirror`;
-        if ($? >> 8) {
-            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $domain"]);
-            $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
-            next;
-        }
-        $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
-    }
-    $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring $arch"]);
-    
-    # set timer to check Tier 2 mirrors after 120 seconds
-    undef $self->{$arch};
-    AnyEvent->now_update;
-    $self->{$arch} = AnyEvent->timer(after => 120, cb => sub { $self->tier2($arch, $sync); });
-}
-
-# synchronize root filesystems
-sub os {
-    my ($self) = @_;
-    
-    # only push to os mirrors
-    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain from mirrors where os = 1");
-    foreach my $row (@$rows) {
-        my ($id, $mirror, $domain) = @$row;
-        `rsync -rlt --delete $self->{packaging}->{repo}->{os} $mirror`;
-        if ($? >> 8) {
-            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror rootfs to $domain"]);
-        }
-    }
-    $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring rootfs"]);
-}
-
-# check Tier 2 mirrors for synchronization
-sub tier2 {
-    my ($self, $arch, $sync) = @_;
-    $arch = "arm" if $arch eq "armv5";
-    $arch = "armv6h" if $arch eq "armv6";
-    $arch = "armv7h" if $arch eq "armv7";
-    
-    my $rows = $self->{dbh}->selectall_arrayref("select id, domain from mirrors where tier = 2");
-    foreach my $row (@$rows) {
-        my ($id, $domain) = @$row;
-        my $remote = `wget -t 1 -T 20 -O - $domain/$arch/sync 2>/dev/null`;
-        chomp $remote;
-        if ($remote ne $sync) {
-            $q_irc->enqueue(['mir', 'print', "[mirror] Tier 2 check failed on $domain"]);
-            $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
-            next;
-        }
-        $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
-    }
-    $q_irc->enqueue(['mir', 'print', "[mirror] Tier 2 check complete for $arch"]);
-}
+################################################################################
+# Orders
 
 # refresh the GeoIP database
+# sender: IRC
 sub geoip_refresh {
-    my $self = shift;
+    my ($self) = @_;
     
     $q_irc->enqueue(['mir', 'print', "[mirror] updating GeoIP table"]);
     
@@ -235,6 +139,175 @@ sub geoip_refresh {
     `rm -f $Bin/GeoIPCountryCSV.zip $Bin/GeoIPCountryWhois.csv`;
     close CSV;
     $q_irc->enqueue(['mir', 'print', "[mirror] GeoIP table has been updated"]);
+}
+
+# display mirrors to private IRC channel
+# sender: IRC
+sub list {
+    my ($self) = @_;
+    
+    $q_irc->enqueue(['db', 'print', "Mirror list:"]);
+    my $rows = $self->{dbh}->selectall_arrayref("select domain, active, tier from mirrors where tier > 0 order by tier");
+    foreach my $row (@$rows) {
+        my ($domain, $active, $tier) = @$row;
+        $q_irc->enqueue(['db', 'print', sprintf(" - T%s [%s] %s", $tier, $active?" active ":"inactive", $domain)]);
+    }
+}
+
+# synchronize root filesystems
+# sender: IRC
+sub os {
+    my ($self) = @_;
+    
+    # only push to os mirrors
+    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain from mirrors where os = 1");
+    foreach my $row (@$rows) {
+        my ($id, $mirror, $domain) = @$row;
+        `rsync -rlt --delete $self->{packaging}->{repo}->{os} $mirror`;
+        if ($? >> 8) {
+            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror rootfs to $domain"]);
+        }
+    }
+    $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring rootfs"]);
+}
+
+# queue updating mirrors for a given architecture
+# sender: Service
+sub queue {
+    my ($self, $arch) = @_;
+    print "Mirror: queuing $arch\n";
+    
+    # save time for tier 2 sync check
+    $self->{$arch}->{sync} = time();
+    
+    # update sync file
+    open (MYFILE, '>', "$self->{packaging}->{repo}->{$arch}/sync");
+    print MYFILE $self->{$arch}->{sync};
+    close (MYFILE);
+    
+    # queue tier 1 mirrors
+    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain, ?, ? from mirrors where tier = 1", undef, $arch, $self->{packaging}->{repo}->{$arch});
+    foreach my $row (@$rows) {
+        push $self->{queue}, $row;
+        $self->{$arch}->{count}++;
+    }
+    
+    # start up mirroring if there are threads available
+    $self->_spawn() if ($self->{threads} <= $self->{threads_max});
+}
+
+# exit mirror thread
+# sender: Server
+sub quit {
+    my ($self) = @_;
+    
+    $available->down_force(10);
+    $self->{condvar}->broadcast;
+}
+
+# synchronize farmer mirror
+# sender: Service
+sub sync {
+    my ($self, $address, $cn) = @_;
+    
+    print "Mirror: pushing to $address\n";
+    foreach my $arch ('armv5', 'armv6', 'armv7') {
+        `rsync -4rlt --delete $self->{packaging}->{repo}->{$arch} $address`;
+        if ($? >> 8) {
+            print "Mirror: failed to push $arch to $address: $!\n";
+        } else {
+            print "Mirror: successfully pushed $arch to $address\n";
+        }
+    }
+    $q_svc->enqueue(['mir', 'sync', $cn]) if defined $cn;
+}
+
+################################################################################
+# Internal
+
+# rsync thread completion check
+sub _check {
+    my ($self) = @_;
+    
+    foreach my $thr (threads->list(threads::joinable)) {
+        my ($id, $ret, $arch, $domain, $sent, $speed, $time) = $thr->join();
+        
+        # decrement current rsync thread count, stop timer if zero
+        undef $self->{rsync_timer} if (--$self->{threads} == 0);
+        
+        $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $domain"]) if ($ret == 1);
+        
+        # update mirrors table and log
+        $self->{dbh}->do("update mirrors set active = ? where id = ?", undef, $ret, $id);
+        $self->{dbh}->do("insert into mirror_log (id, sent, speed, time, fail) values (?, ?, ?, ?, ?)", undef, $id, $sent, $speed, $time, $ret);
+        
+        # decrement and check number of mirrors left to rsync for this architecture
+        if (--$self->{$arch}->{count} == 0) {
+            # set one-shot timer to check Tier 2 mirrors after 120 seconds
+            undef $self->{$arch}->{timer};
+            AnyEvent->now_update;
+            $self->{$arch}->{timer} = AnyEvent->timer(after => 120, cb => sub { $self->_tier2($arch, $self->{$arch}->{sync}); });
+            $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring $arch"]);
+        }
+    }
+    
+    # queue more rsync's if we can
+    $self->_spawn() if ($self->{threads} < $self->{threads_max} && scalar(@{$self->{queue}}));
+}
+
+# spawn rsync threads
+sub _spawn {
+    my ($self) = @_;
+    
+    # create threads
+    for (; $self->{threads} < $self->{threads_max} && scalar(@{$self->{queue}}); $self->{threads}++) {
+        my $args = pop $self->{queue};
+        my ($thr) = threads->create(\&_rsync, @$args);
+    }
+    
+    # check rsync thread completion every 5 seconds
+    return if defined $self->{rsync_timer};
+    $self->{rsync_timer} = AnyEvent->timer(after => 5, interval => 5, cb => sub { $self->_check(); });
+}
+
+# rsync thread subroutine
+sub _rsync {
+    my ($id, $address, $domain, $arch, $repo) = @_;
+    my $ret = 0;
+    my $time = time();
+    
+    # run rsync
+    my $output = qx{rsync -rtl --delete --stats $repo $address};
+    $ret = 1 if ($? >> 8);
+    
+    # get stats from output
+    $time = time() - $time;
+    my ($sent)  = ($output =~ /sent (\d+) bytes/);
+    my ($speed) = ($output =~ /(\d+\.\d+) bytes\/sec/);
+    
+    return ($id, $ret, $arch, $domain, $sent, $speed, $time);
+}
+
+# check Tier 2 mirrors for synchronization
+sub _tier2 {
+    my ($self, $arch, $sync) = @_;
+    $arch = "arm" if $arch eq "armv5";
+    $arch = "armv6h" if $arch eq "armv6";
+    $arch = "armv7h" if $arch eq "armv7";
+    
+    my $rows = $self->{dbh}->selectall_arrayref("select id, domain from mirrors where tier = 2");
+    foreach my $row (@$rows) {
+        my ($id, $domain) = @$row;
+        my $remote = `wget -t 1 -T 20 -O - $domain/$arch/sync 2>/dev/null`;
+        chomp $remote;
+        if ($remote ne $sync) {
+            $q_irc->enqueue(['mir', 'print', "[mirror] Tier 2 check failed on $domain"]);
+            $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
+            next;
+        }
+        $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
+    }
+    $q_irc->enqueue(['mir', 'print', "[mirror] Tier 2 check complete for $arch"]);
 }
 
 1;

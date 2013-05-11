@@ -241,7 +241,7 @@ sub cb_publicmsg {
                 $q_db->enqueue(['irc','ready',$arch]);
             }
             case "!refresh" {
-                $q_mir->enqueue(['irc', 'refresh']);
+                $q_mir->enqueue(['irc', 'geoip_refresh']);
             }
             case "!rehash" {
                 $q_db->enqueue(['irc', 'rehash']);
