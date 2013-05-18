@@ -60,13 +60,13 @@ sub Run {
                 if (defined $self->{dellist}) {
                     $self->update_continue();
                 } else {
-                    $q_irc->enqueue(['db','print',"No pending update."]);
+                    $q_irc->enqueue(['db', 'privmsg', "No pending update."]);
                 }
             }
             case "count" {
                 my $table = @{$orders}[2];
                 my $count = $self->count($table);
-                $q_irc->enqueue(['db','print',"$table has $count"]);
+                $q_irc->enqueue(['db', 'privmsg', "$table has $count"]);
             }
             case "deselect" {
                 my ($arch, $pkg) = @{$orders}[2,3];
@@ -80,22 +80,22 @@ sub Run {
                     $result .= "$count for $arch, ";
                 }
                 $result =~ s/, $//;
-                $q_irc->enqueue(['db', 'print', $result, 1]);
+                $q_irc->enqueue(['db', 'pubmsg', $result]);
             }
             case "force" {
                 my ($arch, $pkg) = @{$orders}[2,3];
                 if (!$self->{arch}->{$arch}) {  # determine if we were given shorthand arch string or not
                     $arch = "armv$arch";
                     if (!$self->{arch}->{$arch}) {
-                        $q_irc->enqueue(['db', 'print', "usage: !force <arch> <package>"]);
+                        $q_irc->enqueue(['db', 'privmsg', "usage: !force <arch> <package>"]);
                         return;
                     }
                 }
                 my @force = $self->{dbh}->selectrow_array("select done, repo from $arch as a inner join abs on (a.id = abs.id) where package = ?", undef, $pkg);
                 if (!defined $force[0]) {
-                    $q_irc->enqueue(['db', 'print', "[force] Package $pkg not found."]);
+                    $q_irc->enqueue(['db', 'privmsg', "[force] Package $pkg not found."]);
                 } elsif ($force[0] eq "1") {
-                    $q_irc->enqueue(['db', 'print', "[force] Package $pkg is already done for $arch."]);
+                    $q_irc->enqueue(['db', 'privmsg', "[force] Package $pkg is already done for $arch."]);
                 } else {
                     $q_svc->enqueue(['db', 'force', { command => 'next', arch => "$arch", repo => $force[1], pkgbase => $pkg }]);
                 }
@@ -104,9 +104,9 @@ sub Run {
                 my ($pkg) = @{$orders}[2];
                 my $rows = $self->{dbh}->do("update abs set highmem = highmem ^ 1 where package = ?", undef, $pkg);
                 if ($rows < 1) {
-                    $q_irc->enqueue(['db', 'print', "[highmem] No such package named $pkg"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[highmem] No such package named $pkg"]);
                 } else {
-                    $q_irc->enqueue(['db', 'print', "[highmem] Toggled $pkg"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[highmem] Toggled $pkg"]);
                 }
             }
             case "info" {
@@ -116,9 +116,9 @@ sub Run {
                 my ($pkg) = @{$orders}[2];
                 my $rows = $self->{dbh}->do("update abs set override = override ^ 1 where package = ?", undef, $pkg);
                 if ($rows < 1) {
-                    $q_irc->enqueue(['db', 'print', "[override] No such package named $pkg"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[override] No such package named $pkg"]);
                 } else {
-                    $q_irc->enqueue(['db', 'print', "[override] Toggled $pkg"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[override] Toggled $pkg"]);
                 }
             }
             case "percent_done" {
@@ -149,7 +149,7 @@ sub Run {
                 if (defined $self->{dellist}) {
                     $self->review();
                 } else {
-                    $q_irc->enqueue(['db','print',"No review available."]);
+                    $q_irc->enqueue(['db', 'privmsg', "No review available."]);
                 }
             }
             case "search" {
@@ -329,7 +329,7 @@ sub ready {
         $ret .= "$arch: $next_pkg[0], ";
     }
     $ret =~ s/, $//;
-    $q_irc->enqueue(['db', 'print', $ret]);
+    $q_irc->enqueue(['db', 'privmsg', $ret]);
 }
 
 # return names of packages ready to build
@@ -340,7 +340,7 @@ sub ready_detail {
     if (!$self->{arch}->{$arch}) {
         $arch = "armv$arch";
         if (!$self->{arch}->{$arch}) {
-            $q_irc->enqueue(['db', 'print', "usage: !ready [arch]"]);
+            $q_irc->enqueue(['db', 'privmsg', "usage: !ready [arch]"]);
             return;
         }
     }
@@ -366,8 +366,8 @@ sub ready_detail {
 	}
     $ret =~ s/, $// if $cnt > 0;
     
-    $q_irc->enqueue(['db', 'print', "Packages waiting to be built: $cnt"]);
-    $q_irc->enqueue(['db', 'print', "Packages waiting: $ret"]) if $cnt > 0;
+    $q_irc->enqueue(['db', 'privmsg', "Packages waiting to be built: $cnt"]);
+    $q_irc->enqueue(['db', 'privmsg', "Packages waiting: $ret"]) if $cnt > 0;
 }
 
 # obsolete: return a count of rows from a table
@@ -392,7 +392,7 @@ sub done {
         $ret .= "$arch: $count/$total (" . sprintf("%0.2f%%", ($count/$total)*100) . ") | ";
     }
     $ret =~ s/ \| $//;
-    $q_irc->enqueue(['db', 'print', $ret]);
+    $q_irc->enqueue(['db', 'privmsg', $ret]);
 }
 
 # return number of packages that failed to build for each architecture
@@ -406,7 +406,7 @@ sub failed {
         $ret .= "$arch: $count/$total (" . sprintf("%0.2f%%", ($count/$total)*100) . ") | ";
     }
     $ret =~ s/ \| $//;
-    $q_irc->enqueue(['db', 'print', $ret]);
+    $q_irc->enqueue(['db', 'privmsg', $ret]);
 }
 
 # return the current status of a package within the build system
@@ -428,7 +428,7 @@ sub status {
                 
                 # package removed from repo, print and bail out
                 if ($del) {
-                    $q_irc->enqueue(['db', 'print', "[status] $repo/$name has been removed."]);
+                    $q_irc->enqueue(['db', 'privmsg', "[status] $repo/$name has been removed."]);
                     return;
                 }
                 
@@ -477,15 +477,15 @@ sub status {
                     }
                 }
                 
-                $q_irc->enqueue(['db', 'print', $status]);
+                $q_irc->enqueue(['db', 'privmsg', $status]);
             } else {
-                $q_irc->enqueue(['db', 'print', "could not find package $package"]);
+                $q_irc->enqueue(['db', 'privmsg', "could not find package $package"]);
                 last;
             }
         }
         if ($skipret) {
             $skipret =~ s/, $//;
-            $q_irc->enqueue(['db', 'print', "[status] $package skipped for $skipret"]);
+            $q_irc->enqueue(['db', 'privmsg', "[status] $package skipped for $skipret"]);
         }
     }
 }
@@ -621,7 +621,7 @@ sub pkg_unfail {
     if (!$self->{arch}->{$arch}) {
         $arch = "armv$arch";
         if (!$self->{arch}->{$arch}) {
-            $q_irc->enqueue(['db', 'print', "usage: !unfail <arch> <package|all>"]);
+            $q_irc->enqueue(['db', 'privmsg', "usage: !unfail <arch> <package|all>"]);
             return;
         }
     }
@@ -632,13 +632,13 @@ sub pkg_unfail {
         $rows = $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.fail = 0, a.done = 0, a.builder = null where abs.package = ?", undef, $package);
     }
     if ($rows < 1) {
-        $q_irc->enqueue(['db','print',"Couldn't unfail $package for $arch"]);
+        $q_irc->enqueue(['db', 'privmsg', "Couldn't unfail $package for $arch"]);
     } else {
         my ($skip) = $self->{dbh}->selectrow_array("select skip from abs where package = ?", undef, $package);
         if ($skip & $self->{skip}->{$arch}) {        
-            $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch"]);
+            $q_irc->enqueue(['db', 'privmsg', "Unfailed $package for $arch"]);
         } else {
-            $q_irc->enqueue(['db', 'print', "Unfailed $package for $arch; however, the package is skipped for this architecture."]);
+            $q_irc->enqueue(['db', 'privmsg', "Unfailed $package for $arch; however, the package is skipped for this architecture."]);
         }
     }
 }
@@ -648,9 +648,9 @@ sub pkg_skip {
     my ($self, $pkg, $op) = @_;
     my $rows = $self->{dbh}->do("update abs set skip = $op where package = ?", undef, $pkg);
     if ($rows < 1) {
-        $q_irc->enqueue(['db','print',"Couldn't modify $pkg, check the name."]);
+        $q_irc->enqueue(['db', 'privmsg', "Couldn't modify $pkg, check the name."]);
     } else {
-        $q_irc->enqueue(['db','print',sprintf("%s %s", $op?"Unskipped":"Skipped", $pkg)]);
+        $q_irc->enqueue(['db', 'privmsg', sprintf("%s %s", $op?"Unskipped":"Skipped", $pkg)]);
         if (!$op) {
             foreach my $arch (keys %{$self->{arch}}) {
                 $self->pkg_prep($arch, { pkgbase => $pkg });
@@ -673,9 +673,9 @@ sub pkg_search {
     
     if ($return) {
         $return =~ s/, $//;
-        $q_irc->enqueue(['db', 'print', "Matching packages: $return", 1]);
+        $q_irc->enqueue(['db', 'privmsg', "Matching packages: $return", 1]);
     } else {
-        $q_irc->enqueue(['db', 'print', "No packages found.", 1]);
+        $q_irc->enqueue(['db', 'privmsg', "No packages found.", 1]);
     }
 }
 
@@ -686,7 +686,7 @@ sub pkg_info {
     
     my $rows = $self->{dbh}->selectall_arrayref("select group_concat(arch), repo, pkgbase, pkgname, pkgver, pkgrel, pkgdesc from files where pkgname = ? and del = 0 group by pkgname", undef, $pkg);
     if (!@{$rows}[0]) {
-        $q_irc->enqueue(['db', 'print', "No package named $pkg.", 1]);
+        $q_irc->enqueue(['db', 'privmsg', "No package named $pkg.", 1]);
         return;
     } else {
         my ($arch, $repo, $pkgbase, $pkgname, $pkgver, $pkgrel, $pkgdesc) = @{@{$rows}[0]};
@@ -694,7 +694,7 @@ sub pkg_info {
         $return = "$repo/$pkgname ";
         $return .= "(split from $pkgbase) " if $pkgbase ne $pkgname;
         $return .= "$pkgver-$pkgrel, available for $arch: $pkgdesc";
-        $q_irc->enqueue(['db', 'print', $return, 1]);
+        $q_irc->enqueue(['db', 'privmsg', $return, 1]);
     }
 }
 
@@ -707,22 +707,22 @@ sub pkg_select {
     if (!$self->{arch}->{$arch}) {
         $arch = "armv$arch";
         if (!$self->{arch}->{$arch}) {
-            $q_irc->enqueue(['db', 'print', "usage: !$cmd <arch> <package>"]);
+            $q_irc->enqueue(['db', 'privmsg', "usage: !$cmd <arch> <package>"]);
             return;
         }
     }
     
     my ($git) = $self->{dbh}->selectrow_array("select git from abs where package = ?", undef, $pkg);
     if ($git == 1) {
-        $q_irc->enqueue(['db', 'print', "[$cmd] $pkg is sourced from git, adjust buildarch value to make changes."]);
+        $q_irc->enqueue(['db', 'privmsg', "[$cmd] $pkg is sourced from git, adjust buildarch value to make changes."]);
         return;
     }
     
     my $bit = $op?'|':'^';
     if ($self->{dbh}->do("update abs set skip = skip $bit ? where package = ?", undef, $self->{skip}->{$arch}, $pkg) < 1) {
-        $q_irc->enqueue(['db', 'print', "[$cmd] No package named $pkg"]);
+        $q_irc->enqueue(['db', 'privmsg', "[$cmd] No package named $pkg"]);
     } else {
-        $q_irc->enqueue(['db', 'print', "[$cmd] $pkg $cmd" . "ed for $arch"]);
+        $q_irc->enqueue(['db', 'privmsg', "[$cmd] $pkg $cmd" . "ed for $arch"]);
     }
 }
 
@@ -742,7 +742,7 @@ sub poll {
         # pull, get HEAD sha
         my $newsha = `git --work-tree=$root --git-dir=$root/.git pull -q && git --work-tree=$root --git-dir=$root/.git rev-parse HEAD`;
         if ($? >> 8) {
-            $q_irc->enqueue(['db','print',"[poll] Failed to poll source ($id) type: $type, root: $root, error: $!"]);
+            $q_irc->enqueue(['db', 'privmsg', "[poll] Failed to poll source ($id) type: $type, root: $root, error: $!"]);
             next;
         }
         chomp $newsha;
@@ -754,17 +754,17 @@ sub poll {
         if ($type eq 'git') {       # git overlay: repo/package
             @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-2 | sort -u`;
             #if ($? >> 8) {
-            #    $q_irc->enqueue(['db','print',"[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
+            #    $q_irc->enqueue(['db', 'privmsg', "[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
             #    next;
             #}
         } elsif ($type eq 'abs') {  # upstream: package
             @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-3 | sort -u | egrep '.*/(core|extra|community)-(i686|any)'`;
             #if ($? >> 8) {
-            #    $q_irc->enqueue(['db','print',"[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
+            #    $q_irc->enqueue(['db', 'privmsg', "[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
             #    next;
             #}
         } else {                    # skip bad entries
-            $q_irc->enqueue(['db','print',"[poll] Unknown source ($id) type: $type, root: $root"]);
+            $q_irc->enqueue(['db', 'privmsg', "[poll] Unknown source ($id) type: $type, root: $root"]);
             next;
         }
         
@@ -823,17 +823,17 @@ sub poll {
                 my $db_pkgrel_stripped = $db_pkgrel;    # strip any of our fraction pkgrel numbers
                 $db_pkgrel_stripped =~ s/\.+.*//;
                 if ($db_repo ne $repo) {
-                    $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $db_repo/$pkg has been relocated to $repo/$pkg"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[poll] Upcoming: $db_repo/$pkg has been relocated to $repo/$pkg"]);
                 }
                 if ($db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel_stripped") {
-                    $q_irc->enqueue(['db', 'print', "[poll] Upcoming: $repo/$pkg is different in overlay, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
+                    $q_irc->enqueue(['db'm, "[poll] Upcoming: $repo/$pkg is different in overlay, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
                     $hold = 1;
                 } elsif ($db_override == 1) {
-                    $q_irc->enqueue(['db', 'print', "[poll] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[poll] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
                     $self->{dbh}->do("delete from queue where path = ?", undef, $path);
                     next;
                 } elsif ("$pkgver-$pkgrel" eq "$db_pkgver-$db_pkgrel_stripped") {
-                    $q_irc->enqueue(['db', 'print', "[poll] Detected upstream updates to overlay package with no version bump for $repo/$pkg"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[poll] Detected upstream updates to overlay package with no version bump for $repo/$pkg"]);
                     $self->{dbh}->do("delete from queue where path = ?", undef, $path);
                     next;
                 }
@@ -872,7 +872,7 @@ sub process {
             print "[process] matched git package found for $pkg, determining hold status\n";
             
             if ($git_del == 1) {
-                $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg, overlay version deleted"]);
+                $q_irc->enqueue(['db', 'privmsg', "[process] Removing hold on $repo/$pkg, overlay version deleted"]);
                 $self->{dbh}->do("delete from queue where path = ?", undef, $git_path);     # remove deleted overlay package from queue
                 $self->{dbh}->do("update queue set hold = 0 where path = ?", undef, $path); # remove hold on upstream package
                 #$self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
@@ -885,23 +885,23 @@ sub process {
             $git_pkgrel_stripped =~ s/\.+.*//;
             
             if ("$pkgver-$pkgrel" ne "$git_pkgver-$git_pkgrel_stripped") {
-                $q_irc->enqueue(['db', 'print', "[process] Holding $repo/$pkg, version mismatch, overlay: $git_pkgver-$git_pkgrel_stripped, new: $pkgver-$pkgrel"]);
+                $q_irc->enqueue(['db', 'privmsg', "[process] Holding $repo/$pkg, version mismatch, overlay: $git_pkgver-$git_pkgrel_stripped, new: $pkgver-$pkgrel"]);
                 $self->{dbh}->do("delete from queue where path = ?", undef, $git_path);     # remove bad overlay package from the queue, must be re-committed anyway
             } elsif ($git_repo ne $repo) {
-                $q_irc->enqueue(['db', 'print', "[process] Holding $repo/$pkg, repo mismatch, overlay: $git_repo, new: $repo"]);
+                $q_irc->enqueue(['db', 'privmsg', "[process] Holding $repo/$pkg, repo mismatch, overlay: $git_repo, new: $repo"]);
                 $self->{dbh}->do("delete from queue where path = ?", undef, $git_path);     # remove bad overlay package from the queue, must be re-committed anyway
             } else {
-                $q_irc->enqueue(['db', 'print', "[process] Removing hold on $repo/$pkg, overlay matches"]);
+                $q_irc->enqueue(['db', 'privmsg', "[process] Removing hold on $repo/$pkg, overlay matches"]);
                 print "[process] removing upstream package $pkg since overlay is good\n";
                 $self->{dbh}->do("delete from queue where path = ?", undef, $path);         # remove held upstream package from the queue, allows overlay package to go through processing
             }
         } elsif ($override == 1) {
             print "[process] new override on $pkg, dropping hold\n";
-            $q_irc->enqueue(['db', 'print', "[process] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
+            $q_irc->enqueue(['db', 'privmsg', "[process] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
             $self->{dbh}->do("delete from queue where path = ?", undef, $path);
         } else {
             $hold_total |= int($skip);  # calculate arches to hold, used at the end
-            $q_irc->enqueue(['db', 'print', "[process] Holding $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches"]);
+            $q_irc->enqueue(['db', 'privmsg', "[process] Holding $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches"]);
         }
     }
     
@@ -930,11 +930,11 @@ sub process {
                 print "[process] not deleting $repo/$pkg, exists in repo $db_repo now, dropping from queue\n";
             } elsif ($type eq 'abs') {
                 if ($db_git == 1) {         # warn us that upstream has trashed something we track, adjust abs flag
-                    $q_irc->enqueue(['db', 'print', "[process] Upstream has removed $repo/$pkg, also tracked in overlay"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[process] Upstream has removed $repo/$pkg, also tracked in overlay"]);
                     #$self->{dbh}->do("update abs set abs = 0 where package = ?", undef, $pkg);
                     print "[process] mysql: update abs set abs = 0 where package = $pkg\n";
                 } else {                    # otherwise trash the package
-                    $q_irc->enqueue(['db', 'print', "[process] Deleting $repo/$pkg (upstream)"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[process] Deleting $repo/$pkg (upstream)"]);
                     #$self->{dbh}->do("update abs set abs = 0, del = 1 where package = ?", undef, $pkg);
                     #$self->{dbh}->do("delete from names where package = ?", undef, $db_id);
                     #$self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
@@ -949,7 +949,7 @@ sub process {
                     #$self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
                     print "[process] mysql: update abs set git = 0 where package = $pkg\n";
                 } else {                    # otherwise, trash the package
-                    $q_irc->enqueue(['db', 'print', "[process] Deleting $repo/$pkg (overlay)"]);
+                    $q_irc->enqueue(['db', 'privmsg', "[process] Deleting $repo/$pkg (overlay)"]);
                     #$self->{dbh}->do("update abs set git = 0, abs = 0, del = 1 where package = ?", undef, $pkg);
                     #$self->{dbh}->do("delete from names where package = ?", undef, $db_id);
                     #$self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
@@ -1050,7 +1050,7 @@ sub process {
         }
         
         # remove package from queue
-        $q_irc->enqueue(['db', 'print', "[process] ($type) $repo/$pkg to $pkgver-$pkgrel"]);
+        $q_irc->enqueue(['db', 'privmsg', "[process] ($type) $repo/$pkg to $pkgver-$pkgrel"]);
         $self->{dbh}->do("delete from queue where path = ?", undef, $path);
     }
     
@@ -1089,7 +1089,7 @@ sub update {
                      'aur'          => 40,
                      'alarm'        => 50 );
     
-    $q_irc->enqueue(['db', 'print', 'Updating git..']);
+    $q_irc->enqueue(['db', 'privmsg', 'Updating git..']);
     print "update git..\n";
     system("pushd $gitroot; git pull; popd");
     
@@ -1159,7 +1159,7 @@ sub update {
     }
     
     # add/update abs packages
-    $q_irc->enqueue(['db', 'print', 'Updating abs..']);
+    $q_irc->enqueue(['db', 'privmsg', 'Updating abs..']);
     print "update abs packages..\n";
     my $abs_count = 0;
     `ABSROOT=$absroot $archbin/abs`;
@@ -1179,10 +1179,10 @@ sub update {
                 my $db_pkgrel_stripped = $db_pkgrel;
                 $db_pkgrel_stripped =~ s/\.+.*//;
                 if ("$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel_stripped") {
-                    $q_irc->enqueue(['db','print',"$pkg is different in git, git = $db_pkgver-$db_pkgrel, abs = $pkgver-$pkgrel"]);
+                    $q_irc->enqueue(['db', 'privmsg', "$pkg is different in git, git = $db_pkgver-$db_pkgrel, abs = $pkgver-$pkgrel"]);
                 }
                 if ($db_repo ne $repo) {
-                    $q_irc->enqueue(['db', 'print', "$pkg has been relocated in ABS, git = $db_repo, abs = $repo"]);
+                    $q_irc->enqueue(['db', 'privmsg', "$pkg has been relocated in ABS, git = $db_repo, abs = $repo"]);
                 }
                 # git transition: set abs = 1 on git packages that have an abs counterpart
                 $self->{dbh}->do("update abs set abs = 1 where package = ?", undef, $pkg);
@@ -1239,13 +1239,13 @@ sub update {
         $dellist{$pkg} = 1;
     }
     
-    $q_irc->enqueue(['db', 'print', "Updated $git_count from git, $abs_count from abs. " . scalar(keys %newlist)  . " new, " . scalar(keys %dellist) . " removed."]);
+    $q_irc->enqueue(['db', 'privmsg', "Updated $git_count from git, $abs_count from abs. " . scalar(keys %newlist)  . " new, " . scalar(keys %dellist) . " removed."]);
     
     # switch on deletion limit
     if (scalar(keys %dellist) > 10) {
         $self->{dellist} = \%dellist;
         $self->{newlist} = \%newlist;
-        $q_irc->enqueue(['db', 'print', "Warning: " . scalar(keys %dellist) . " packages to be deleted : !review and/or !continue"]);
+        $q_irc->enqueue(['db', 'privmsg', "Warning: " . scalar(keys %dellist) . " packages to be deleted : !review and/or !continue"]);
     } else {
         $self->update_continue(\%dellist);
     }
@@ -1274,7 +1274,7 @@ sub update_continue {
     }
     
     # build new dep tables
-    $q_irc->enqueue(['db', 'print', "Building dependencies.."]);
+    $q_irc->enqueue(['db', 'privmsg', "Building dependencies.."]);
     my $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides, depends, makedepends from abs where del = 0 and skip != 0");
     $self->{dbh}->do("delete from names");
     $self->{dbh}->do("delete from deps");
@@ -1304,7 +1304,7 @@ sub update_continue {
             $self->{dbh}->do("insert into deps values (?, ?)", undef, $id, $dep);
         }
     }
-    $q_irc->enqueue(['db', 'print', "Update complete."]);
+    $q_irc->enqueue(['db', 'privmsg', "Update complete."]);
 }
 
 # print out packages to review for large package removal from ABS
@@ -1321,8 +1321,8 @@ sub review {
     foreach my $pkg (keys %dellist) {
         $del .= " $pkg";
     }
-    $q_irc->enqueue(['db', 'print', scalar(keys %newlist) . " new:$new"]);
-    $q_irc->enqueue(['db', 'print', scalar(keys %dellist) . " deleted:$del"]);
+    $q_irc->enqueue(['db', 'privmsg', scalar(keys %newlist) . " new:$new"]);
+    $q_irc->enqueue(['db', 'privmsg', scalar(keys %dellist) . " deleted:$del"]);
 }
 
 # check AUR package versions
@@ -1344,7 +1344,7 @@ sub aur_check {
     } else {                                                        # all good, results is an array of dictionaries
         foreach my $pkg (@{$aur_json->{results}}) {
             if ($aurlist{$pkg->{Name}} ne $pkg->{Version}) {
-                $q_irc->enqueue(['db','print',"$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
+                $q_irc->enqueue(['db', 'privmsg', "$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
                 delete $aurlist{$pkg->{Name}};
             } elsif ($aurlist{$pkg->{Name}}) {
                 delete $aurlist{$pkg->{Name}};                      # version checks, remove from list
@@ -1355,7 +1355,7 @@ sub aur_check {
             foreach my $pkg (keys %aurlist) {
                 push @not_tracked, $pkg;
             }
-            $q_irc->enqueue(['db','print',"Packages in AUR repo, but not in AUR: " . join(' ', @not_tracked)]);
+            $q_irc->enqueue(['db', 'privmsg', "Packages in AUR repo, but not in AUR: " . join(' ', @not_tracked)]);
         }
     }
 }

@@ -27,7 +27,7 @@ sub Run {
     my $self = shift;
     
 	return if (! $available->down_nb());
-    print "IrcRun\n";
+    print "Irc Run\n";
 	
     # set up irc client
     $self->{condvar} = AnyEvent->condvar;
@@ -38,79 +38,49 @@ sub Run {
     $con->enable_ssl() if ($self->{ssl});
     
     # register event callbacks
-    $con->reg_cb(connect	=> sub { $self->cb_connect(@_); });
-    $con->reg_cb(disconnect	=> sub { $self->cb_disconnect(@_); });
-    $con->reg_cb(registered	=> sub { $self->cb_registered(@_); });
-    $con->reg_cb(publicmsg	=> sub { $self->cb_publicmsg(@_); });
+    $con->reg_cb(connect	=> sub { $self->_cb_connect(@_); });
+    $con->reg_cb(disconnect	=> sub { $self->_cb_disconnect(@_); });
+    $con->reg_cb(registered	=> sub { $self->_cb_registered(@_); });
+    $con->reg_cb(publicmsg	=> sub { $self->_cb_publicmsg(@_); });
     
     # arm thread queue timer
-    $self->{timer} = AnyEvent->timer(interval => 1, cb => sub { $self->cb_queue(); });
+    $self->{timer} = AnyEvent->timer(interval => 1, cb => sub { $self->_cb_queue(); });
     
     # connect, loop
-    $self->connect($con);
+    $self->_connect($con);
     $self->{condvar}->wait;
     
     # termination following a broadcast
-    print "IrcRunEnd\n";
+    print "Irc End\n";
     return 0;
 }
 
-# connect to irc
-sub connect {
-    my ($self, $con) = @_;
-	$con->connect($self->{server}, $self->{port}, {
-		nick => $self->{nick},
-		user => $self->{user},
-		real => $self->{nick},
-		password => "$self->{user} $self->{pass}",
-		timeout => 20 });
-}
+################################################################################
+# AnyEvent Callbacks
 
-# send a line to the build channel
-sub irc_priv_print {
-    my ($self, $msg) = @_;
-    $self->irc_print($msg, 0);
-}
-
-# send a line to the public channel
-sub irc_pub_print {
-    my ($self, $msg) = @_;
-    $self->irc_print($msg, 1);
-}
-
-# send a message to irc
-sub irc_print {
-    my ($self, $msg, $pub) = @_;
+# callback for thread queue timer
+sub _cb_queue {
+    my ($self) = @_;
     
-    # limit message length to first space after 400 characters
-    if (length($msg) > 400) {
-        my $todo;
-        my $i = index($msg, ' ', 400);
-        if ($i == -1 || $i == length($msg) || $i > 450) {
-            # no nearby space, just chop it
-            $todo = "... " . substr($msg, 400);
-            $i = 400;
-        } else {
-            $todo = "... " . substr($msg, $i + 1);
-        }
-        # enqueue at beginning so followup prints don't smash us
-        $q_irc->insert(0, ['irc', 'print', $todo, $pub]);
-        $msg = substr($msg, 0, $i);
-    }
-    if ($pub) {
-        $self->{con}->send_msg(PRIVMSG => '#'.$self->{pubchan}, "$msg");
+    # dequeue next message
+    my $msg = $q_irc->dequeue_nb();
+    return unless $msg;
+    
+    my ($from, $order) = @{$msg};
+    print "IRC: got $order from $from\n";
+    
+    # run named method with provided args
+    if ($self->can($order)) {
+        $self->$order(@{$msg}[2..$#{$msg}]);
     } else {
-        $self->{con}->send_msg(PRIVMSG => '#'.$self->{channel}, "$msg");
-        $q_svc->enqueue(['irc', 'admin', { command => 'update', type => 'console', console => $msg }]);
+        print "IRC: no method: $order\n";
     }
 }
-
-
 
 # callback for socket connection - sleep and reconnect on error
-sub cb_connect {
+sub _cb_connect {
     my ($self, $con, $error) = @_;
-	
+    
     if (defined $error) {
         warn "IRC: connect error: $error\n";
         sleep $self->{delay};
@@ -119,7 +89,7 @@ sub cb_connect {
 }
 
 # callback for socket disconnect - sleep and reconnect
-sub cb_disconnect {
+sub _cb_disconnect {
     my ($self, $con, $reason) = @_;
 	
     warn "IRC: disconnected: $reason\n";
@@ -133,20 +103,11 @@ sub cb_disconnect {
     $self->connect($con);
 }
 
-# callback after registered to server
-sub cb_registered {
-    my ($self, $con) = @_;
-    $con->send_msg(JOIN => '#'.$self->{channel});
-    $con->send_msg(JOIN => '#'.$self->{pubchan});
-}
-
 # callback for public (channel) messages
-sub cb_publicmsg {
+sub _cb_publicmsg {
     my ($self, $con, $chan, $buf) = @_;
     
     my %msg = %{$buf};
-    my $prefix = $msg{prefix} || "";
-    my $command = $msg{command} || "";
     my @params = @{$msg{params}};
     
     # private channel commands
@@ -163,15 +124,17 @@ sub cb_publicmsg {
                 if ($arg) {
                     $q_db->enqueue(['irc','count',$arg]);
                 } else {
-                    $self->irc_priv_print("usage: !count <table>");
+                    $self->privmsg("usage: !count <table>");
                 }
             }
             case "!deselect" {
-                my ($arch, $pkg) = split(/ /, $arg, 3);
-                if ($arch && $pkg) {
-                    $q_db->enqueue(['irc', 'deselect', $arch, $pkg]);
-                } else {
-                    $self->irc_priv_print("usage: !select <arch> <package>");
+                if ($arg) {
+                    my ($arch, $pkg) = split(/ /, $arg, 3);
+                    if ($arch && $pkg) {
+                        $q_db->enqueue(['irc', 'deselect', $arch, $pkg]);
+                    }
+                }else {
+                    $self->privmsg("usage: !select <arch> <package>");
                 }
             }
             case "!done" {
@@ -181,63 +144,67 @@ sub cb_publicmsg {
                 $q_db->enqueue(['irc','percent_failed',$arg]);
             }
             case "!force" {
-                my ($arch, $pkg) = split(/ /, $arg, 3);
-                if (!$arch || !$pkg) {
-                    $self->irc_priv_print("usage: !force <arch> <package>");
+                if ($arg) {
+                    my ($arch, $pkg) = split(/ /, $arg, 3);
+                    if ($arch && $pkg) {
+                        $q_db->enqueue(['irc', 'force', $arch, $pkg]);
+                    }
                 } else {
-                    $q_db->enqueue(['irc', 'force', $arch, $pkg]);
+                    $self->privmsg("usage: !force <arch> <package>");
                 }
             }
             case "!highmem" {
-                my ($pkg) = split(/ /, $arg, 2);
+                my ($pkg) = $arg ? split(/ /, $arg, 2) : undef;
                 if (!$pkg) {
-                    $self->irc_priv_print("usage: !highmem <package>");
+                    $self->privmsg("usage: !highmem <package>");
                 } else {
                     $q_db->enqueue(['irc', 'highmem', $pkg]);
                 }
             }
             case "!list" {
-                    $q_svc->enqueue(['irc', 'list']);
+                $q_svc->enqueue(['irc', 'list']);
             }
             case "!maint" {
-                $q_svc->enqueue(['irc', 'maint', $arg]);
+                $q_svc->enqueue(['irc', 'maint', $arg || undef ]);
             }
             case "!mirrors" {
                 $q_mir->enqueue(['irc', 'list']);
             }
             case "!os" {
                 $q_mir->enqueue(['irc', 'os']);
-                $self->irc_priv_print("[os] queued rootfs updates");
+                $self->privmsg("[os] queued rootfs updates");
             }
             case "!override" {
-                my ($pkg) = split(/ /, $arg, 2);
-                if (!$pkg) {
-                    $self->irc_priv_print("usage: !override <package>");
+                if ($arg) {
+                    my ($pkg) = split(/ /, $arg, 2);
+                    if (!$pkg) {
+                        $q_db->enqueue(['irc', 'override', $pkg]);
+                    }
                 } else {
-                    $q_db->enqueue(['irc', 'override', $pkg]);
+                    $self->privmsg("usage: !override <package>");
                 }
             }
             case "!poll" {
-                my ($type) = split(/ /, $arg, 2);
+                my ($type) = $arg ? split(/ /, $arg, 2) : undef;
                 $q_db->enqueue(['irc', 'poll', $type]);
             }
             case "!power" {
                 if ($arg) {
                     $q_svc->enqueue(['db', 'farm', 'power', '', '', $arg]);
                 } else {
-                    $self->irc_priv_print("usage: !power <cycle|on|off> <builder#>");
+                    $self->privmsg("usage: !power <cycle|on|off> <builder#>");
                 }
             }
             case "!prune" {
-                my ($pkg) = split(/ /, $arg, 2);
+                my ($pkg) = $arg ? split(/ /, $arg, 2) : undef;
                 if (!$pkg) {
-                    $self->irc_priv_print("usage: !prune <package>");
+                    $self->privmsg("usage: !prune <package>");
                 } else {
                     $q_db->enqueue(['irc', 'prune', $pkg]);
                 }
             }
             case "!ready" {
-                my ($arch) = split(/ /, $arg, 2);
+                my ($arch) = $arg ? split(/ /, $arg, 2) : undef;
                 $q_db->enqueue(['irc','ready',$arch]);
             }
             case "!refresh" {
@@ -250,25 +217,27 @@ sub cb_publicmsg {
                 $q_db->enqueue(['irc','review']);
             }
             case "!select" {
-                my ($arch, $pkg) = split(/ /, $arg, 3);
-                if ($arch && $pkg) {
-                    $q_db->enqueue(['irc', 'select', $arch, $pkg]);
+                if ($arg) {
+                    my ($arch, $pkg) = split(/ /, $arg, 3);
+                    if ($arch && $pkg) {
+                        $q_db->enqueue(['irc', 'select', $arch, $pkg]);
+                    }
                 } else {
-                    $self->irc_priv_print("usage: !select <arch> <package>");
+                    $self->privmsg("usage: !select <arch> <package>");
                 }
             }
             case "!skip" {
                 if ($arg) {
-                    $q_db->enqueue(['irc','skip',$arg]);
+                    $q_db->enqueue(['irc', 'skip', $arg]);
                 } else {
-                    $self->irc_priv_print("usage: !skip <package>");
+                    $self->privmsg("usage: !skip <package>");
                 }
             }
             case ["!start", "!stop"] {
                 if (my ($what) = split(/ /, $arg, 2)) {
                     $q_svc->enqueue(['irc', $trigger, $what]);
                 } else {
-                    $self->irc_priv_print("usage: $trigger <all|5|6|7>");
+                    $self->privmsg("usage: $trigger <all|5|6|7>");
                 }
             }
             case "!status" {
@@ -276,18 +245,18 @@ sub cb_publicmsg {
                 if ($pkg) {
                     $q_db->enqueue(['irc', 'status', $pkg]);
                 } else {
-                    $self->irc_priv_print("usage: !status <package>");
+                    $self->privmsg("usage: !status <package>");
                 }
             }
             case "!sync" {
                 if ($arg && ($arg eq '5' || $arg eq '6' || $arg eq '7')) {
                     $q_mir->enqueue(['irc', 'queue', "armv$arg"]);
-                    $self->irc_priv_print("[sync] queued armv$arg mirror update");
+                    $self->privmsg("[sync] queued armv$arg mirror update");
                 } else {
                     $q_mir->enqueue(['irc', 'queue', 'armv5']);
                     $q_mir->enqueue(['irc', 'queue', 'armv6']);
                     $q_mir->enqueue(['irc', 'queue', 'armv7']);
-                    $self->irc_priv_print("[sync] queued mirror updates");
+                    $self->privmsg("[sync] queued mirror updates");
                 }
             }
             case "!unfail" {
@@ -295,14 +264,14 @@ sub cb_publicmsg {
                 if ($pkg && $arch) {
                     $q_db->enqueue(['irc', 'unfail', $arch, $pkg]);
                 } else {
-                    $self->irc_priv_print("usage: !unfail <arch> <package|all>");
+                    $self->privmsg("usage: !unfail <arch> <package|all>");
                 }
             }
             case "!unskip" {
                 if ($arg) {
                     $q_db->enqueue(['irc','unskip',$arg]);
                 } else {
-                    $self->irc_priv_print("usage: !unskip <package>");
+                    $self->privmsg("usage: !unskip <package>");
                 }
             }
             case "!update" {
@@ -334,32 +303,79 @@ sub cb_publicmsg {
     }
 }
 
-# callback for the queue timer
-sub cb_queue {
+# callback after registered to server
+sub _cb_registered {
     my ($self, $con) = @_;
-    my $msg = $q_irc->dequeue_nb();
-    if ($msg) {
-        my ($from, $order) = @{$msg};
-        print "IRC[$from $order]\n";
-        switch($order){
-            case "print" {
-                my ($data, $pub) = @{$msg}[2,3];
-                if ($pub) {
-                    $self->irc_pub_print($data);
-                } else {
-                    $self->irc_priv_print($data);
-                }
-            }
-            else {
-                $self->irc_priv_print("$order from $from");
-            }
+    $con->send_msg(JOIN => '#'.$self->{channel});
+    $con->send_msg(JOIN => '#'.$self->{pubchan});
+}
+
+################################################################################
+# Orders
+
+# print to private channel
+# sender: Any
+sub privmsg {
+    my ($self, $data) = @_;
+    $self->_irc_print($msg, 0);
+}
+
+# print to public channel
+# sender: Any
+sub pubmsg {
+    my ($self, $data) = @_;
+    $self->_irc_print($msg, 1);
+}
+
+# exit irc thread
+# sender: Server
+sub quit {
+    my ($self) = @_;
+    
+    undef $self->{timer};
+    $self->{con}->disconnect('quit');
+    $available->down_force(10);
+    $self->{condvar}->broadcast;
+}
+
+################################################################################
+# Internal
+
+# connect to irc
+sub _connect {
+    my ($self, $con) = @_;
+	$con->connect($self->{server}, $self->{port}, {
+		nick => $self->{nick},
+		user => $self->{user},
+		real => $self->{nick},
+		password => "$self->{user} $self->{pass}",
+		timeout => 20 });
+}
+
+# send a message to irc
+sub _irc_print {
+    my ($self, $msg, $pub) = @_;
+    
+    # limit message length to first space after 400 characters
+    if (length($msg) > 400) {
+        my $todo;
+        my $i = index($msg, ' ', 400);
+        if ($i == -1 || $i == length($msg) || $i > 450) {
+            # no nearby space, just chop it
+            $todo = "... " . substr($msg, 400);
+            $i = 400;
+        } else {
+            $todo = "... " . substr($msg, $i + 1);
         }
-        if ($order eq 'quit'){
-            undef $self->{timer};
-            $self->{con}->disconnect($order);
-            $self->{condvar}->broadcast;
-            return;
-        }
+        # enqueue at beginning so followup prints don't smash us
+        $q_irc->insert(0, ['irc', $pub ? 'pubmsg' : 'privmsg';, $todo]);
+        $msg = substr($msg, 0, $i);
+    }
+    if ($pub) {
+        $self->{con}->send_msg(PRIVMSG => '#'.$self->{pubchan}, "$msg");
+    } else {
+        $self->{con}->send_msg(PRIVMSG => '#'.$self->{channel}, "$msg");
+        $q_svc->enqueue(['irc', 'admin', { command => 'update', type => 'console', console => $msg }]);
     }
 }
 

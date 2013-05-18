@@ -51,6 +51,10 @@ sub Run {
     print "Mirror End\n";
 }
 
+################################################################################
+# AnyEvent Callbacks
+
+# callback for thread queue timer
 sub _cb_queue {
     my ($self) = @_;
     
@@ -77,7 +81,7 @@ sub _cb_queue {
 sub geoip_refresh {
     my ($self) = @_;
     
-    $q_irc->enqueue(['mir', 'print', "[mirror] updating GeoIP table"]);
+    $q_irc->enqueue(['mir', 'privmsg', "[mirror] updating GeoIP table"]);
     
     # 2-letter country code to numerical continent map
     #   1 -> NA, 2 -> SA, 3 -> EU, 4 -> AF, 5 -> AS, 6 -> OC, 7 -> AN
@@ -101,12 +105,12 @@ sub geoip_refresh {
     # download and extract new GeoIP database
     system("wget -P $Bin http://geolite.maxmind.com/download/geoip/database/GeoIPCountryCSV.zip");
     if ($? >> 8) {
-        $q_irc->enqueue(['mir', 'print', "[mirror] failed to download new GeoIP database"]);
+        $q_irc->enqueue(['mir', 'privmsg', "[mirror] failed to download new GeoIP database"]);
         return;
     }
     system("unzip $Bin/GeoIPCountryCSV.zip");
     if ($? >> 8) {
-        $q_irc->enqueue(['mir', 'print', "[mirror] failed to extract new GeoIP database"]);
+        $q_irc->enqueue(['mir', 'privmsg', "[mirror] failed to extract new GeoIP database"]);
         return;
     }
     
@@ -121,7 +125,7 @@ sub geoip_refresh {
         if ($csv->parse($_)) {
             my @cols = $csv->fields();
             $self->{dbh}->do("insert into geoip_tmp values (?, ?, ?)", undef, $cols[2], $cols[3], $continent_map{$cols[4]} || 1);
-            $q_irc->enqueue(['mir', 'print', "[mirror] couldn't map country code $cols[4]"]) if (!$continent_map{$cols[4]});
+            $q_irc->enqueue(['mir', 'privmsg', "[mirror] couldn't map country code $cols[4]"]) if (!$continent_map{$cols[4]});
         } else {
             my $err = $csv->error_input;
             print "Mirror: Failed to parse line: $err\n";
@@ -138,7 +142,7 @@ sub geoip_refresh {
     $self->{dbh}->do("delete from geoip_tmp");
     `rm -f $Bin/GeoIPCountryCSV.zip $Bin/GeoIPCountryWhois.csv`;
     close CSV;
-    $q_irc->enqueue(['mir', 'print', "[mirror] GeoIP table has been updated"]);
+    $q_irc->enqueue(['mir', 'privmsg', "[mirror] GeoIP table has been updated"]);
 }
 
 # display mirrors to private IRC channel
@@ -146,11 +150,11 @@ sub geoip_refresh {
 sub list {
     my ($self) = @_;
     
-    $q_irc->enqueue(['db', 'print', "Mirror list:"]);
+    $q_irc->enqueue(['db', 'privmsg', "Mirror list:"]);
     my $rows = $self->{dbh}->selectall_arrayref("select domain, active, tier from mirrors where tier > 0 order by tier");
     foreach my $row (@$rows) {
         my ($domain, $active, $tier) = @$row;
-        $q_irc->enqueue(['db', 'print', sprintf(" - T%s [%s] %s", $tier, $active?" active ":"inactive", $domain)]);
+        $q_irc->enqueue(['db', 'privmsg', sprintf(" - T%s [%s] %s", $tier, $active?" active ":"inactive", $domain)]);
     }
 }
 
@@ -165,10 +169,10 @@ sub os {
         my ($id, $mirror, $domain) = @$row;
         `rsync -rlt --delete $self->{packaging}->{repo}->{os} $mirror`;
         if ($? >> 8) {
-            $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror rootfs to $domain"]);
+            $q_irc->enqueue(['mir', 'privmsg', "[mirror] failed to mirror rootfs to $domain"]);
         }
     }
-    $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring rootfs"]);
+    $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring rootfs"]);
 }
 
 # queue updating mirrors for a given architecture
@@ -237,7 +241,7 @@ sub _check {
         # decrement current rsync thread count, stop timer if zero
         undef $self->{rsync_timer} if (--$self->{threads} == 0);
         
-        $q_irc->enqueue(['mir', 'print', "[mirror] failed to mirror to $domain"]) if ($ret == 1);
+        $q_irc->enqueue(['mir', 'privmsg', "[mirror] failed to mirror to $domain"]) if ($ret == 1);
         
         # update mirrors table and log
         $self->{dbh}->do("update mirrors set active = ? where id = ?", undef, $ret ? 0 : 1, $id);
@@ -249,7 +253,7 @@ sub _check {
             undef $self->{$arch}->{timer};
             AnyEvent->now_update;
             $self->{$arch}->{timer} = AnyEvent->timer(after => 120, cb => sub { $self->_tier2($arch, $self->{$arch}->{sync}); });
-            $q_irc->enqueue(['mir', 'print', "[mirror] finished mirroring $arch"]);
+            $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring $arch"]);
         }
     }
     
@@ -304,13 +308,13 @@ sub _tier2 {
         my $remote = `wget -t 1 -T 20 -O - $domain/$arch/sync 2>/dev/null`;
         chomp $remote;
         if ($remote ne $sync) {
-            $q_irc->enqueue(['mir', 'print', "[mirror] Tier 2 check failed on $domain"]);
+            $q_irc->enqueue(['mir', 'privmsg', "[mirror] Tier 2 check failed on $domain"]);
             $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
             next;
         }
         $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
     }
-    $q_irc->enqueue(['mir', 'print', "[mirror] Tier 2 check complete for $arch"]);
+    $q_irc->enqueue(['mir', 'privmsg', "[mirror] Tier 2 check complete for $arch"]);
 }
 
 1;

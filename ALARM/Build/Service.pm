@@ -123,7 +123,7 @@ sub node_accept {
                             on_read     => sub { $h->push_read(json => sub { $self->cb_read(@_); }) }
                             ;
     
-    $q_irc->enqueue(['svc', 'print', "[SVC] NodeJS accepted on $address"]);
+    $q_irc->enqueue(['svc', 'privmsg', "[SVC] NodeJS accepted on $address"]);
     my %client = ( handle   => $h,              # connection handle - must be preserved
                    ip       => $address,        # dotted quad ip address
                    ou       => "admin",         # OU = admin
@@ -191,7 +191,7 @@ sub cb_verify_cb {
                     $self->cb_error($oldhandle, 1, 'duplicate client disconnect');
                     $oldhandle->destroy;
                 }
-                $q_irc->enqueue(['svc', 'print', "[SVC] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
+                $q_irc->enqueue(['svc', 'privmsg', "[SVC] verified ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
                 my %client = ( handle   => $ref,                # connection handle - must be preserved
                                ip       => $ref->{peername},    # dotted quad ip address
                                ou       => $orgunit,            # OU from cert - currently one of: builder/admin
@@ -203,7 +203,7 @@ sub cb_verify_cb {
         }
     }
     
-    $q_irc->enqueue(['svc', 'print', "[SVC] failed verification for $ref->{peername}: ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
+    $q_irc->enqueue(['svc', 'privmsg', "[SVC] failed verification for $ref->{peername}: ". Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_subject_name($cert))]);
     return 0;
 }
 
@@ -214,7 +214,7 @@ sub cb_error {
     if ($fatal) {
         print "fatal ";
         if (defined $self->{clients}->{$handle}->{cn}) {    # delete our OU/CN reference if it exists
-            $q_irc->enqueue(['svc', 'print', "[SVC] $self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn} disconnected: $message"]);
+            $q_irc->enqueue(['svc', 'privmsg', "[SVC] $self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn} disconnected: $message"]);
             if ($self->{clients}->{$handle}->{ou} eq "builder") {
                 $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $self->{clients}->{$handle}->{cn}, state => 'disconnect' } }]);
             }
@@ -223,7 +223,7 @@ sub cb_error {
             }
             if ($self->{clients}->{$handle}->{ou} eq "builder" && $self->{clients}->{$handle}->{state} eq "building") {
                 print "   -> releasing package: $self->{clients}->{$handle}->{cn} ($self->{clients}->{$handle}->{arch}) $self->{clients}->{$handle}->{pkgbase}\n";
-                $q_irc->enqueue(['svc', 'print', "[released] $self->{clients}->{$handle}->{cn} ($self->{clients}->{$handle}->{arch}) $self->{clients}->{$handle}->{pkgbase}"]);
+                $q_irc->enqueue(['svc', 'privmsg', "[released] $self->{clients}->{$handle}->{cn} ($self->{clients}->{$handle}->{arch}) $self->{clients}->{$handle}->{pkgbase}"]);
                 $q_db->enqueue(['svc', 'release', $self->{clients}->{$handle}->{arch}, $self->{clients}->{$handle}->{cn}, { arch => $self->{clients}->{$handle}->{arch}, pkgbase => $self->{clients}->{$handle}->{pkgbase} }]);
             }
             delete $self->{clientsref}->{"$self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn}"};
@@ -284,7 +284,7 @@ sub cb_read {
                 #  - pkgbase    => top level package name
                 case "done" {
                     print "   -> package done: $client->{cn} ($data->{arch}) $data->{pkgbase}\n";
-                    $q_irc->enqueue(['svc', 'print', "[\0033done\003] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
+                    $q_irc->enqueue(['svc', 'privmsg', "[\0033done\003] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
                     $q_db->enqueue(['svc', 'done', $data->{arch}, $data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
                     if ($client->{state} ne 'manual') {
@@ -307,7 +307,7 @@ sub cb_read {
                 #  - pkgbase    => top level package name
                 case "fail" {
                     print "   -> package fail: $client->{cn} ($data->{arch}) $data->{pkgbase}\n";
-                    $q_irc->enqueue(['svc', 'print', "[\0034fail\003] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
+                    $q_irc->enqueue(['svc', 'privmsg', "[\0034fail\003] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
                     $q_db->enqueue(['svc', 'fail', $data->{arch}, $data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
                     undef $client->{pkgbase};
@@ -358,7 +358,7 @@ sub cb_read {
                 #  - pkgbase    => top level package name
                 case "release" {
                     print "   -> releasing package: $client->{cn} ($data->{arch}) $data->{pkgbase}\n";
-                    $q_irc->enqueue(['svc', 'print', "[released] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
+                    $q_irc->enqueue(['svc', 'privmsg', "[released] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
                     $q_db->enqueue(['svc', 'release', $data->{arch}, $client->{cn}, $data]);
                     $handle->push_write(json => $data); # ACK via original hash
                     $client->{state} = 'idle';
@@ -408,7 +408,7 @@ sub cb_read {
                 # power command ACK
                 #  - data       => message to print to IRC
                 case "power" {
-                    $q_irc->enqueue(['svc', 'print', $data->{data}]);
+                    $q_irc->enqueue(['svc', 'privmsg', $data->{data}]);
                 }
                 
                 # sync farmer - rsync push
@@ -483,7 +483,7 @@ sub gh_read {
                 $data =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
                 my $json = decode_json $data;
                 foreach my $commit (@{$json->{commits}}) {
-                    $q_irc->enqueue(['svc', 'print', "[$json->{repository}->{name}] <$commit->{author}->{name}> $commit->{message}", 1]);
+                    $q_irc->enqueue(['svc', 'pubmsg', "[$json->{repository}->{name}] <$commit->{author}->{name}> $commit->{message}", 1]);
                     $self->{poll_count} = 2 if ($json->{repository}->{name} eq "PKGBUILDs");
                 }
                 $h->destroy;
@@ -547,7 +547,7 @@ sub cb_queue {
                     my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
                     next unless $builder->{state} eq 'idle';
                     if (grep {$_ eq $data->{arch}} @{$builder->{available}}) {
-                        $q_irc->enqueue(['svc','print',"[force] builder: $builder->{cn} ($data->{arch}) - package: $data->{pkgbase}"]);
+                        $q_irc->enqueue(['svc', 'privmsg', "[force] builder: $builder->{cn} ($data->{arch}) - package: $data->{pkgbase}"]);
                         print "   -> next for $builder->{cn} ($data->{arch}): $data->{pkgbase}\n";
                         $builder->{handle}->push_write(json => $data);
                         $builder->{state} = 'building';
@@ -556,7 +556,7 @@ sub cb_queue {
                         return;
                     }
                 }
-                $q_irc->enqueue(['svc','print',"[force] no idle builder available for $data->{pkgbase}"]);
+                $q_irc->enqueue(['svc', 'privmsg', "[force] no idle builder available for $data->{pkgbase}"]);
             }
             
             # push json out to admin interface
@@ -577,7 +577,7 @@ sub cb_queue {
                 my $builder = $self->{clients}->{$handle};
                 
                 if ($data->{pkgbase} ne "FAIL") {
-                    $q_irc->enqueue(['svc','print',"[new] builder: $cn ($arch) - package: $data->{pkgbase}"]);
+                    $q_irc->enqueue(['svc', 'privmsg', "[new] builder: $cn ($arch) - package: $data->{pkgbase}"]);
                     print "   -> next for $cn ($arch): $data->{pkgbase}\n";
                     $handle->push_write(json => $data);
                     $builder->{state} = 'building';
@@ -613,7 +613,7 @@ sub cb_queue {
             ## IRC orders
             # list connected clients
             case "list" {
-                $q_irc->enqueue(['svc', 'print', "[list] Connected clients:"]);
+                $q_irc->enqueue(['svc', 'privmsg', "[list] Connected clients:"]);
                 foreach my $oucn (sort keys %{$self->{clientsref}}) {
                     next if (!($oucn =~ m/builder\/.*/));
                     my $builder = $self->{clients}->{$self->{clientsref}->{$oucn}};
@@ -629,7 +629,7 @@ sub cb_queue {
                     }
                     my $info = $builder->{pkgbase} ? "$builder->{arch}/$builder->{pkgbase} " : '';
                     $info .= $builder->{highmem} ? "[highmem]" : '';
-                    $q_irc->enqueue(['svc', 'print', "[list]  - [" . join(' ', @arches) . "] $builder->{cn}: $builder->{state} $info"]);
+                    $q_irc->enqueue(['svc', 'privmsg', "[list]  - [" . join(' ', @arches) . "] $builder->{cn}: $builder->{state} $info"]);
                 }
             }
             
@@ -639,7 +639,7 @@ sub cb_queue {
                 if (!defined $self->{$what} && $what ne 'all') {    # determine if we were given shorthand arch string or not
                     $what = "armv$what";
                     if (!defined $self->{$what}) {
-                        $q_irc->enqueue(['db', 'print', "$order <all|5|6|7>"]);
+                        $q_irc->enqueue(['db', 'privmsg', "$order <all|5|6|7>"]);
                     }
                 }
                 if ($what eq 'all') {
@@ -660,9 +660,9 @@ sub cb_queue {
                 if ($cn) {
                     if (my $handle = $self->{clientsref}->{"builder/$cn"}) {
                         $handle->push_write(json => {command => 'maint'});
-                        $q_irc->enqueue(['svc', 'print', "[maint] Requested maintenance run on $cn."]);
+                        $q_irc->enqueue(['svc', 'privmsg', "[maint] Requested maintenance run on $cn."]);
                     } else {
-                        $q_irc->enqueue(['svc', 'print', "[maint] No builder named $cn."]);
+                        $q_irc->enqueue(['svc', 'privmsg', "[maint] No builder named $cn."]);
                     }
                 } else {
                     foreach my $oucn (keys %{$self->{clientsref}}) {
@@ -670,7 +670,7 @@ sub cb_queue {
                         my $handle = $self->{clientsref}->{$oucn};
                         $handle->push_write(json => {command => 'maint'});
                     }
-                    $q_irc->enqueue(['svc', 'print', "[maint] Requested maintenance run on all builders."]);
+                    $q_irc->enqueue(['svc', 'privmsg', "[maint] Requested maintenance run on all builders."]);
                 }
             }
             
@@ -738,7 +738,7 @@ sub push_builder {
     }
     
     if (!$count) {
-        $q_irc->enqueue(['svc','print',"[$action] no builders to $action"]);
+        $q_irc->enqueue(['svc', 'privmsg', "[$action] no builders to $action"]);
     }
 }
 
@@ -758,7 +758,7 @@ sub check_complete {
         $count++ if ($builder->{state} eq 'idle' || ($builder->{state} ne 'idle' && $builder->{arch} ne $arch));
     }
     if ($total && $count == $total) {
-        $q_irc->enqueue(['svc','print',"[complete] found no package to issue for $arch, mirroring"]);
+        $q_irc->enqueue(['svc', 'privmsg', "[complete] found no package to issue for $arch, mirroring"]);
         $q_mir->enqueue(['svc', 'queue', $arch]);
         $self->{$arch} = 'stop';
     }
