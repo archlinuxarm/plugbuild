@@ -210,9 +210,9 @@ sub Run {
                 my $next = $self->get_next_package($arch, $builder, $highmem);
                 if ($next) {
                     $self->pkg_work(@{$next}[1], $arch, $builder);
-                    $q_svc->enqueue(['db', 'next', $arch, $builder, { command => 'next', arch => $arch, repo => $next->[0], pkgbase => $next->[1] }]);
+                    $q_svc->enqueue(['db', 'next_pkg', $arch, $builder, { command => 'next', arch => $arch, repo => $next->[0], pkgbase => $next->[1] }]);
                 } else {
-                    $q_svc->enqueue(['db', 'next', $arch, $builder, { command => 'next', pkgbase => "FAIL" }]);
+                    $q_svc->enqueue(['db', 'next_pkg', $arch, $builder, { command => 'next', pkgbase => "FAIL" }]);
                 }
             }
             case "poll" {

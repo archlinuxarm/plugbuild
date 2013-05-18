@@ -235,7 +235,7 @@ sub _cb_publicmsg {
             }
             case ["!start", "!stop"] {
                 if (my ($what) = split(/ /, $arg, 2)) {
-                    $q_svc->enqueue(['irc', $trigger, $what]);
+                    $q_svc->enqueue(['irc', 'build', substr($trigger, 1), $what]);
                 } else {
                     $self->privmsg("usage: $trigger <all|5|6|7>");
                 }
