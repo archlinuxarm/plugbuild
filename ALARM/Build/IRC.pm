@@ -317,14 +317,14 @@ sub _cb_registered {
 # sender: Any
 sub privmsg {
     my ($self, $data) = @_;
-    $self->_irc_print($msg, 0);
+    $self->_irc_print($data, 0);
 }
 
 # print to public channel
 # sender: Any
 sub pubmsg {
     my ($self, $data) = @_;
-    $self->_irc_print($msg, 1);
+    $self->_irc_print($data, 1);
 }
 
 # exit irc thread
@@ -368,7 +368,7 @@ sub _irc_print {
             $todo = "... " . substr($msg, $i + 1);
         }
         # enqueue at beginning so followup prints don't smash us
-        $q_irc->insert(0, ['irc', $pub ? 'pubmsg' : 'privmsg';, $todo]);
+        $q_irc->insert(0, ['irc', $pub ? 'pubmsg' : 'privmsg', $todo]);
         $msg = substr($msg, 0, $i);
     }
     if ($pub) {

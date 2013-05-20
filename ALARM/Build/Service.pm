@@ -140,7 +140,7 @@ sub build {
         }
         $self->_push_builder($action);
     } else {
-        $self->{$what} = $order;
+        $self->{$what} = $action;
         $self->_push_builder($action, $what);
     }
 }
@@ -268,12 +268,16 @@ sub next_pkg {
 # push a start on enabled arches
 # sender: Database
 sub push {
+    my ($self) = @_;
+    
     $self->_push_builder("start");
 }
 
 # quit service thread
 # sender: Server
 sub quit {
+    my ($self) = @_;
+    
     $self->{condvar}->broadcast;
     return;
 }

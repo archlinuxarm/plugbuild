@@ -826,7 +826,7 @@ sub poll {
                     $q_irc->enqueue(['db', 'privmsg', "[poll] Upcoming: $db_repo/$pkg has been relocated to $repo/$pkg"]);
                 }
                 if ($db_override == 0 && "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel_stripped") {
-                    $q_irc->enqueue(['db'm, "[poll] Upcoming: $repo/$pkg is different in overlay, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
+                    $q_irc->enqueue(['db', "[poll] Upcoming: $repo/$pkg is different in overlay, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
                     $hold = 1;
                 } elsif ($db_override == 1) {
                     $q_irc->enqueue(['db', 'privmsg', "[poll] Override: $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel"]);
