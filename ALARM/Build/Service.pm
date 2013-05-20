@@ -267,7 +267,7 @@ sub next_pkg {
 
 # push a start on enabled arches
 # sender: Database
-sub push {
+sub push_build {
     my ($self) = @_;
     
     $self->_push_builder("start");
