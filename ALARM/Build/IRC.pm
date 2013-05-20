@@ -26,7 +26,7 @@ sub new {
 sub Run {
     my $self = shift;
     
-	return if (! $available->down_nb());
+    return if (! $available->down_nb());
     print "Irc Run\n";
 	
     # set up irc client
@@ -118,30 +118,23 @@ sub _cb_publicmsg {
                 $q_db->enqueue(['irc', 'aur_check']);
             }
             case "!continue" {
-                $q_db->enqueue(['irc', 'continue']);
-            }
-            case "!count" {
-                if ($arg) {
-                    $q_db->enqueue(['irc','count',$arg]);
-                } else {
-                    $self->privmsg("usage: !count <table>");
-                }
+                $q_db->enqueue(['irc', 'update_continue']);
             }
             case "!deselect" {
                 if ($arg) {
                     my ($arch, $pkg) = split(/ /, $arg, 3);
                     if ($arch && $pkg) {
-                        $q_db->enqueue(['irc', 'deselect', $arch, $pkg]);
+                        $q_db->enqueue(['irc', 'pkg_select', $arch, $pkg, 0]);
                     }
                 }else {
                     $self->privmsg("usage: !select <arch> <package>");
                 }
             }
             case "!done" {
-                $q_db->enqueue(['irc','percent_done',$arg]);
+                $q_db->enqueue(['irc', 'done', $arg]);
             }
             case "!failed" {
-                $q_db->enqueue(['irc','percent_failed',$arg]);
+                $q_db->enqueue(['irc', 'failed', $arg]);
             }
             case "!force" {
                 if ($arg) {
@@ -158,7 +151,7 @@ sub _cb_publicmsg {
                 if (!$pkg) {
                     $self->privmsg("usage: !highmem <package>");
                 } else {
-                    $q_db->enqueue(['irc', 'highmem', $pkg]);
+                    $q_db->enqueue(['irc', 'pkg_highmem', $pkg]);
                 }
             }
             case "!list" {
@@ -178,7 +171,7 @@ sub _cb_publicmsg {
                 if ($arg) {
                     my ($pkg) = split(/ /, $arg, 2);
                     if (!$pkg) {
-                        $q_db->enqueue(['irc', 'override', $pkg]);
+                        $q_db->enqueue(['irc', 'pkg_override', $pkg]);
                     }
                 } else {
                     $self->privmsg("usage: !override <package>");
@@ -205,7 +198,11 @@ sub _cb_publicmsg {
             }
             case "!ready" {
                 my ($arch) = $arg ? split(/ /, $arg, 2) : undef;
-                $q_db->enqueue(['irc','ready',$arch]);
+                if ($arch) {
+                    $q_db->enqueue(['irc','ready_detail',$arch]);
+                } else {
+                    $q_db->enqueue(['irc','ready']);
+                }
             }
             case "!refresh" {
                 $q_mir->enqueue(['irc', 'geoip_refresh']);
@@ -220,7 +217,7 @@ sub _cb_publicmsg {
                 if ($arg) {
                     my ($arch, $pkg) = split(/ /, $arg, 3);
                     if ($arch && $pkg) {
-                        $q_db->enqueue(['irc', 'select', $arch, $pkg]);
+                        $q_db->enqueue(['irc', 'pkg_select', $arch, $pkg, 1]);
                     }
                 } else {
                     $self->privmsg("usage: !select <arch> <package>");
@@ -228,7 +225,7 @@ sub _cb_publicmsg {
             }
             case "!skip" {
                 if ($arg) {
-                    $q_db->enqueue(['irc', 'skip', $arg]);
+                    $q_db->enqueue(['irc', 'pkg_skip', $arg, 0]);
                 } else {
                     $self->privmsg("usage: !skip <package>");
                 }
@@ -262,14 +259,14 @@ sub _cb_publicmsg {
             case "!unfail" {
                 my ($arch, $pkg) = split(/ /, $arg, 2);
                 if ($pkg && $arch) {
-                    $q_db->enqueue(['irc', 'unfail', $arch, $pkg]);
+                    $q_db->enqueue(['irc', 'pkg_unfail', $arch, $pkg]);
                 } else {
                     $self->privmsg("usage: !unfail <arch> <package|all>");
                 }
             }
             case "!unskip" {
                 if ($arg) {
-                    $q_db->enqueue(['irc','unskip',$arg]);
+                    $q_db->enqueue(['irc', 'pkg_skip', $arg, 1]);
                 } else {
                     $self->privmsg("usage: !unskip <package>");
                 }
@@ -290,7 +287,7 @@ sub _cb_publicmsg {
                 if ($arg) {
                     ($arg) = split(/ /, $arg, 2);
                     $arg = substr($arg, 0, 20); # limit to 20 characters
-                    $q_db->enqueue(['irc', 'info', $arg]);
+                    $q_db->enqueue(['irc', 'pkg_info', $arg]);
                 }
             }
             case "!search" {    # search packages

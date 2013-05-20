@@ -344,7 +344,7 @@ sub _cb_error {
             if ($self->{clients}->{$handle}->{ou} eq "builder" && $self->{clients}->{$handle}->{state} eq "building") {
                 print "   -> releasing package: $self->{clients}->{$handle}->{cn} ($self->{clients}->{$handle}->{arch}) $self->{clients}->{$handle}->{pkgbase}\n";
                 $q_irc->enqueue(['svc', 'privmsg', "[released] $self->{clients}->{$handle}->{cn} ($self->{clients}->{$handle}->{arch}) $self->{clients}->{$handle}->{pkgbase}"]);
-                $q_db->enqueue(['svc', 'release', $self->{clients}->{$handle}->{arch}, $self->{clients}->{$handle}->{cn}, { arch => $self->{clients}->{$handle}->{arch}, pkgbase => $self->{clients}->{$handle}->{pkgbase} }]);
+                $q_db->enqueue(['svc', 'pkg_release', $self->{clients}->{$handle}->{arch}, $self->{clients}->{$handle}->{cn}, { arch => $self->{clients}->{$handle}->{arch}, pkgbase => $self->{clients}->{$handle}->{pkgbase} }]);
             }
             delete $self->{clientsref}->{"$self->{clients}->{$handle}->{ou}/$self->{clients}->{$handle}->{cn}"};
         }
@@ -380,7 +380,7 @@ sub _cb_read {
                 #  - md5sum     => md5sum for upload verification
                 case "add" {
                     print "   -> adding package: $client->{cn} ($data->{arch}) $data->{pkgbase}\n";
-                    $q_db->enqueue(['svc', 'add', $data->{arch}, $client->{cn}, $data]);
+                    $q_db->enqueue(['svc', 'pkg_add', $data->{arch}, $client->{cn}, $data]);
                 }
                 
                 # build for top-level package is complete
@@ -389,7 +389,7 @@ sub _cb_read {
                 case "done" {
                     print "   -> package done: $client->{cn} ($data->{arch}) $data->{pkgbase}\n";
                     $q_irc->enqueue(['svc', 'privmsg', "[\0033done\003] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
-                    $q_db->enqueue(['svc', 'done', $data->{arch}, $data->{pkgbase}]);
+                    $q_db->enqueue(['svc', 'pkg_done', $data->{arch}, $data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
                     if ($client->{state} ne 'manual') {
                         $client->{state} = 'idle';
@@ -412,7 +412,7 @@ sub _cb_read {
                 case "fail" {
                     print "   -> package fail: $client->{cn} ($data->{arch}) $data->{pkgbase}\n";
                     $q_irc->enqueue(['svc', 'privmsg', "[\0034fail\003] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
-                    $q_db->enqueue(['svc', 'fail', $data->{arch}, $data->{pkgbase}]);
+                    $q_db->enqueue(['svc', 'pkg_fail', $data->{arch}, $data->{pkgbase}]);
                     $handle->push_write(json => $data); # ACK via original hash
                     undef $client->{pkgbase};
                     undef $client->{arch};
@@ -454,7 +454,7 @@ sub _cb_read {
                 #  - pkgbase    => top level package name
                 case "prep" {
                     print "   -> preparing package: $client->{cn} ($data->{arch}) $data->{pkgbase}\n";
-                    $q_db->enqueue(['svc', 'prep', $data->{arch}, $client->{cn}, $data]);
+                    $q_db->enqueue(['svc', 'pkg_prep', $data->{arch}, $data, $client->{cn}]);
                 }
                 
                 # release build from client
@@ -463,7 +463,7 @@ sub _cb_read {
                 case "release" {
                     print "   -> releasing package: $client->{cn} ($data->{arch}) $data->{pkgbase}\n";
                     $q_irc->enqueue(['svc', 'privmsg', "[released] $client->{cn} ($data->{arch}) $data->{pkgbase}"]);
-                    $q_db->enqueue(['svc', 'release', $data->{arch}, $client->{cn}, $data]);
+                    $q_db->enqueue(['svc', 'pkg_release', $data->{arch}, $client->{cn}, $data]);
                     $handle->push_write(json => $data); # ACK via original hash
                     $client->{state} = 'idle';
                     undef $client->{pkgbase};
@@ -753,7 +753,7 @@ sub _push_builder {
         if ($action eq "start" && $target->{state} eq "idle") {
             $target->{state} = 'check';
             $target->{arch} = $arch;
-            $q_db->enqueue(['svc', 'next', $arch, $target->{cn}, $target->{highmem}]);
+            $q_db->enqueue(['svc', 'next_pkg', $arch, $target->{cn}, $target->{highmem}]);
         } elsif ($arch eq "stop") {
             $target->{handle}->push_write(json => {command => 'stop'});
         }
@@ -778,7 +778,7 @@ sub _push_builder {
             next if ($builder->{state} ne 'idle');
             $builder->{state} = 'check';
             $builder->{arch} = $use_arch;
-            $q_db->enqueue(['svc', 'next', $use_arch, $builder->{cn}, $builder->{highmem}]);
+            $q_db->enqueue(['svc', 'next_pkg', $use_arch, $builder->{cn}, $builder->{highmem}]);
             $count++;
         } elsif ($action eq "stop") {
             next if ($builder->{state} eq 'idle');
