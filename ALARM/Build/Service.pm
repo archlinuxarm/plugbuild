@@ -73,7 +73,7 @@ sub _cb_queue {
     my ($self) = @_;
     
     # dequeue next message
-    my $msg = $q_mir->dequeue_nb();
+    my $msg = $q_svc->dequeue_nb();
     return unless $msg;
     
     my ($from, $order) = @{$msg};
@@ -280,6 +280,12 @@ sub quit {
     
     $self->{condvar}->broadcast;
     return;
+}
+
+# information on number of packages ready to build for each architecture
+# sender: Database
+sub ready {
+    
 }
 
 # rsync push to farmer complete, set farmer ready

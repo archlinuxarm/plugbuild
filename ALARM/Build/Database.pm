@@ -223,12 +223,14 @@ sub pkg_add {
         print "    -> md5sum failed\n";
         $data->{response} = "FAIL";
         $q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
+        return;
     }
     $md5sum_file = (split(/ /, $md5sum_file))[0];
     if ($md5sum_sent ne $md5sum_file) {
         print "    -> md5sum mismatch: $filename $md5sum_sent/$md5sum_file\n";
         $data->{response} = "FAIL";
         $q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
+        return;
     }
     
     # move file, repo-add it
@@ -239,6 +241,7 @@ sub pkg_add {
         print "    -> move failed\n";
         $data->{response} = "FAIL";
         $q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
+        return;
     }
     $q_svc->enqueue(['db', 'farm', 'add', $arch, $repo, $filename]);
     system("$self->{packaging}->{archbin}/repo-add -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.db.tar.gz $self->{packaging}->{repo}->{$arch}/$repo/$filename");
@@ -246,6 +249,7 @@ sub pkg_add {
         print "    -> repo-add failed\n";
         $data->{response} = "FAIL";
         $q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
+        return;
     }
     
     system("$self->{packaging}->{archbin}/repo-add -q -f $self->{packaging}->{repo}->{$arch}/$repo/$repo.files.tar.gz $self->{packaging}->{repo}->{$arch}/$repo/$filename");
@@ -253,6 +257,7 @@ sub pkg_add {
         print "    -> repo-add -f failed\n";
         $data->{response} = "FAIL";
         $q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
+        return;
     }
     
     # add package to file table
@@ -303,7 +308,7 @@ sub pkg_info {
     
     my $rows = $self->{dbh}->selectall_arrayref("select group_concat(arch), repo, pkgbase, pkgname, pkgver, pkgrel, pkgdesc from files where pkgname = ? and del = 0 group by pkgname", undef, $pkg);
     if (!@{$rows}[0]) {
-        $q_irc->enqueue(['db', 'privmsg', "No package named $pkg.", 1]);
+        $q_irc->enqueue(['db', 'pubmsg', "No package named $pkg.", 1]);
         return;
     } else {
         my ($arch, $repo, $pkgbase, $pkgname, $pkgver, $pkgrel, $pkgdesc) = @{@{$rows}[0]};
@@ -311,7 +316,7 @@ sub pkg_info {
         $return = "$repo/$pkgname ";
         $return .= "(split from $pkgbase) " if $pkgbase ne $pkgname;
         $return .= "$pkgver-$pkgrel, available for $arch: $pkgdesc";
-        $q_irc->enqueue(['db', 'privmsg', $return, 1]);
+        $q_irc->enqueue(['db', 'pubmsg', $return, 1]);
     }
 }
 
@@ -577,7 +582,6 @@ sub ready {
     my $ret = "Packages waiting to be built: ";
     
     foreach my $arch (sort keys %{$self->{arch}}) {
-        my $parent = $self->{arch}->{$arch};
         my @next_pkg = $self->{dbh}->selectrow_array("select count(*) from (
             select
                 p.repo, p.package, p.depends, p.makedepends
@@ -609,7 +613,6 @@ sub ready_detail {
         }
     }
     
-    my $parent = $self->{arch}->{$arch};
     my $rows = $self->{dbh}->selectall_arrayref("select
         p.repo, p.package, p.depends, p.makedepends
         from
@@ -632,6 +635,30 @@ sub ready_detail {
     
     $q_irc->enqueue(['db', 'privmsg', "Packages waiting to be built: $cnt"]);
     $q_irc->enqueue(['db', 'privmsg', "Packages waiting: $ret"]) if $cnt > 0;
+}
+
+# return hash of number of packages ready to build for each architecture
+# sender: Service, internal
+sub ready_list {
+    my ($self) = @_;
+    my %ret;
+    
+    foreach my $arch (sort keys %{$self->{arch}}) {
+        my @row = $self->{dbh}->selectrow_array("select count(*) from (
+            select
+                p.repo, p.package, p.depends, p.makedepends
+                from
+                abs as p
+                    join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
+                    left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
+                where p.skip & ? > 0 and p.del = 0  
+                group by p.id
+                having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
+            ) as xx", undef, $self->{skip}->{$arch});
+        $ret{$arch} = $row[0];
+    }
+    
+    $q_svc->enqueue(['db', 'ready', \%ret]);
 }
 
 # rehash stored attributes pulled from database
@@ -695,9 +722,9 @@ sub search {
     
     if ($return) {
         $return =~ s/, $//;
-        $q_irc->enqueue(['db', 'privmsg', "Matching packages: $return", 1]);
+        $q_irc->enqueue(['db', 'pubmsg', "Matching packages: $return", 1]);
     } else {
-        $q_irc->enqueue(['db', 'privmsg', "No packages found.", 1]);
+        $q_irc->enqueue(['db', 'pubmsg', "No packages found.", 1]);
     }
 }
 
