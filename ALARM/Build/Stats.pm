@@ -44,7 +44,7 @@ sub Run {
     }
     
     $self->{condvar} = AnyEvent->condvar;
-    $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->cb_queue(); });
+    $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->_cb_queue(); });
     $self->{condvar}->wait;
     
     $db->disconnect;
@@ -53,26 +53,56 @@ sub Run {
     return -1;
 }
 
-sub cb_queue {
+# callback for thread queue timer
+sub _cb_queue {
     my ($self) = @_;
+    
     while (my $msg = $q_stats->dequeue_nb()) {
         my ($from, $order) = @{$msg};
-        switch ($order){
-            case "quit" {
-                $available->down_force(10);
-                $self->{condvar}->broadcast;
-            }
-            
-            # service orders
-            case "stats" {
-                $self->log_stat(@{$msg}[2..7]);
-            }
+        print "Stats: got $order from $from\n";
+        
+        # break out of loop
+        if($order eq "quit"){
+            $available->down_force(10);
+            $self->{condvar}->broadcast;
+            return;
+        }
+        
+        # run named method with provided args
+        if ($self->can($order)) {
+            $self->$order(@{$msg}[2..$#{$msg}]);
+        } else {
+            print "Stats: no method: $order\n";
         }
     }
 }
 
-# farm host 7-day averaging log
-sub log_open_host {
+################################################################################
+# Orders
+
+# log RRD data point
+# sender: Service
+sub log_stat {
+    my ($self, $cn, $ts, $data, $pkg, $arch) = @_;
+    
+    # open host averaging log
+    $self->_log_open_host($cn) unless (defined $self->{host}->{$cn});
+    
+    # add data point
+    $self->{host}->{$cn}->update(time => $ts, values => $data);
+    
+    # store package data
+    #if ($pkg ne '') {
+    #    $self->{dbh}->do("insert into stats (package, host, ts, $type) values ((select id from abs where package = ?), (select id from stat_hosts where name = ?), ?, ?)
+    #                      on duplicate key update $type = ?", undef, $pkg, $cn, $ts, $value, $value);
+    #}
+}
+
+################################################################################
+# Internal
+
+# create and/or open farm host 7-day averaging log
+sub _log_open_host {
     my ($self, $cn) = @_;
     
     $self->{host}->{$cn} = RRDTool::OO->new(file => "$Bin/rrd/$cn.rrd", raise_error => 0);
@@ -110,23 +140,8 @@ sub log_open_host {
     
 }
 
-sub log_stat {
-    my ($self, $cn, $ts, $data, $pkg, $arch) = @_;
-    
-    # open host averaging log
-    $self->log_open_host($cn) if (!defined $self->{$cn});
-    
-    # add data point
-    $self->{host}->{$cn}->update(time => $ts, values => $data);
-    
-    # store package data
-    #if ($pkg ne '') {
-    #    $self->{dbh}->do("insert into stats (package, host, ts, $type) values ((select id from abs where package = ?), (select id from stat_hosts where name = ?), ?, ?)
-    #                      on duplicate key update $type = ?", undef, $pkg, $cn, $ts, $value, $value);
-    #}
-}
-
-sub log_graph_host {
+# create graphs for all currently tracked hosts
+sub _log_graph_host {
     my ($self) = @_;
     
     foreach my $host (keys %{$self->{host}}) {
