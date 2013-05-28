@@ -275,7 +275,7 @@ sub cb_read {
                 }
                 undef $timer_idle;
                 undef $current_filename;
-                build_start($data->{arch}, $data->{repo}, $data->{pkgbase});
+                build_start($data->{arch}, $data->{repo}, $data->{pkgbase}, $data->{version});
             }
         }
         case "open" {
@@ -322,7 +322,7 @@ sub cb_read {
 }
 
 sub build_start {
-    my ($arch, $repo, $pkgbase) = @_;
+    my ($arch, $repo, $pkgbase, $version) = @_;
     
     $childpid = fork();
     if (!defined $childpid) {
@@ -361,7 +361,7 @@ sub build_start {
     
     # build package, replace perl process with mkarchroot
     print " -> Building package\n";
-    exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -AcsfrL --skippgpcheck --nocheck") or print "couldn't exec: $!";
+    exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -AcsfrL --skippgpcheck --nocheck 2>&1 | tee $pkgbase-$version-$arch.log; test $${PIPESTATUS[0]} -eq 0") or print "couldn't exec: $!";
 }
 
 sub build_finish {
@@ -377,9 +377,7 @@ sub build_finish {
         $state->{command} = 'fail';
 	
         # check for log file
-        my ($logfile) = glob("$config{$state->{arch}}{chroot}/copy/build/*-package.log") ||
-                        glob("$config{$state->{arch}}{chroot}/copy/build/*-check.log")   ||
-                        glob("$config{$state->{arch}}{chroot}/copy/build/*-build.log");
+        my ($logfile) = glob("$workroot/$state->{pkgbase}/$state->{pkgbase}-$state->{version}-$state->{arch}.log");
         if ($logfile) { # set log file in upload file list
             $files{$logfile} = 0;
             $current_filename = $logfile;

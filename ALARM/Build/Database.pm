@@ -188,7 +188,7 @@ sub next_pkg {
     if (defined($self->{dbh})) {
     	$self->{dbh}->do("update $arch set builder = null where builder = ?", undef, $builder);
         my @pkg = $self->{dbh}->selectrow_array("select
-            p.repo, p.package, p.depends, p.makedepends
+            p.repo, p.package, p.pkgver, p.pkgrel, p.depends, p.makedepends
             from abs as p
             join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
             left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
@@ -200,7 +200,7 @@ sub next_pkg {
             $q_svc->enqueue(['db', 'next_pkg', $arch, $builder, { command => 'next', pkgbase => "FAIL" }]);
         } else {
             $self->_pkg_work($pkg[1], $arch, $builder);
-            $q_svc->enqueue(['db', 'next_pkg', $arch, $builder, { command => 'next', arch => $arch, repo => $pkg[0], pkgbase => $pkg[1] }]);
+            $q_svc->enqueue(['db', 'next_pkg', $arch, $builder, { command => 'next', arch => $arch, repo => $pkg[0], pkgbase => $pkg[1], version => "$pkg[2]-$pkg[3]" }]);
         }
     } else {
         $q_svc->enqueue(['db', 'next_pkg', $arch, $builder, { command => 'next', pkgbase => "FAIL" }]);
