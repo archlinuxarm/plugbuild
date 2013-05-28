@@ -59,7 +59,7 @@ sub _cb_queue {
     
     while (my $msg = $q_stats->dequeue_nb()) {
         my ($from, $order) = @{$msg};
-        print "Stats: got $order from $from\n";
+        #print "Stats: got $order from $from\n";
         
         # break out of loop
         if($order eq "quit"){
