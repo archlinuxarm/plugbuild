@@ -101,45 +101,6 @@ sub log_stat {
 ################################################################################
 # Internal
 
-# create and/or open farm host 7-day averaging log
-sub _log_open_host {
-    my ($self, $cn) = @_;
-    
-    $self->{host}->{$cn} = RRDTool::OO->new(file => "$Bin/rrd/$cn.rrd", raise_error => 0);
-    
-    # RRD file already exists
-    return if (-f "$Bin/rrd/$cn.rrd");
-    
-    # otherwise, create the file
-    $self->{host}->{$cn}->create(
-        step        => 10,  # 10 second intervals
-        data_source => { name   => "cpu0_user",     type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu0_system",   type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu0_wait",     type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu1_user",     type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu1_system",   type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu1_wait",     type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu2_user",     type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu2_system",   type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu2_wait",     type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu3_user",     type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu3_system",   type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "cpu3_wait",     type    => "GAUGE",     min     => 0,   max => 100 },
-        data_source => { name   => "mem",           type    => "GAUGE",     min     => 0 },
-        data_source => { name   => "eth_r",         type    => "GAUGE",     min     => 0 },
-        data_source => { name   => "eth_w",         type    => "GAUGE",     min     => 0 },
-        data_source => { name   => "sd_ops_r",      type    => "GAUGE",     min     => 0 },
-        data_source => { name   => "sd_ops_w",      type    => "GAUGE",     min     => 0 },
-        data_source => { name   => "sd_oct_r",      type    => "GAUGE",     min     => 0 },
-        data_source => { name   => "sd_oct_w",      type    => "GAUGE",     min     => 0 },
-        archive     => { rows   => 1000,         cpoints    => 60,        cfunc     => "AVERAGE" }, # lower resolution 7 day archive (10 minute averaging)
-        archive     => { rows   => 1000,         cpoints    => 60,        cfunc     => "MAX" },
-        archive     => { rows   => 480,          cpoints    => 18,        cfunc     => "AVERAGE" }, # higher resolution 1 day archive (3 minute averaging)
-        archive     => { rows   => 480,          cpoints    => 18,        cfunc     => "MAX" },
-    );
-    
-}
-
 # create graphs for all currently tracked hosts
 sub _log_graph_host {
     my ($self) = @_;
@@ -189,6 +150,45 @@ sub _log_graph_host {
             draw           => { type    => 'line',      color   => '000000',        legend  => 'Memory',        cdef      => 'mem,10,/' },
         );
     }
+}
+
+# create and/or open farm host 7-day averaging log
+sub _log_open_host {
+    my ($self, $cn) = @_;
+    
+    $self->{host}->{$cn} = RRDTool::OO->new(file => "$Bin/rrd/$cn.rrd", raise_error => 0);
+    
+    # RRD file already exists
+    return if (-f "$Bin/rrd/$cn.rrd");
+    
+    # otherwise, create the file
+    $self->{host}->{$cn}->create(
+        step        => 10,  # 10 second intervals
+        data_source => { name   => "cpu0_user",     type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu0_system",   type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu0_wait",     type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu1_user",     type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu1_system",   type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu1_wait",     type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu2_user",     type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu2_system",   type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu2_wait",     type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu3_user",     type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu3_system",   type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "cpu3_wait",     type    => "GAUGE",     min     => 0,   max => 100 },
+        data_source => { name   => "mem",           type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "eth_r",         type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "eth_w",         type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "sd_ops_r",      type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "sd_ops_w",      type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "sd_oct_r",      type    => "GAUGE",     min     => 0 },
+        data_source => { name   => "sd_oct_w",      type    => "GAUGE",     min     => 0 },
+        archive     => { rows   => 1000,         cpoints    => 60,        cfunc     => "AVERAGE" }, # lower resolution 7 day archive (10 minute averaging)
+        archive     => { rows   => 1000,         cpoints    => 60,        cfunc     => "MAX" },
+        archive     => { rows   => 480,          cpoints    => 18,        cfunc     => "AVERAGE" }, # higher resolution 1 day archive (3 minute averaging)
+        archive     => { rows   => 480,          cpoints    => 18,        cfunc     => "MAX" },
+    );
+    
 }
 
 1;
