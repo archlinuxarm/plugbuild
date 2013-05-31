@@ -15,6 +15,7 @@ use File::stat;
 use HTTP::Tiny;
 use JSON::XS;
 use Scalar::Util;
+use WWW::Shorten::TinyURL;
 
 # we only ever want one instance connected to the database.
 our $available = Thread::Semaphore->new(1);
@@ -1167,7 +1168,7 @@ sub _process {
             $self->{dbh}->do("delete from queue where path = ?", undef, $path);
         } else {
             $hold_total |= int($skip);  # calculate arches to hold, used at the end
-            $q_irc->enqueue(['db', 'privmsg', "[process] Holding $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches"]);
+            $q_irc->enqueue(['db', 'privmsg', "[process] Holding $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches " . makeashorterlink("https://projects.archlinux.org/svntogit/$repo.git/log/trunk?h=packages/$pkg")]);
         }
     }
     
