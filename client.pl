@@ -335,7 +335,7 @@ sub build_start {
     }
     
     # set child thread process group for efficient killing
-    setpgrp;
+    #setpgrp;
     
     # sanitize workspace
     chdir "$Bin";
