@@ -158,23 +158,6 @@ sub list {
     }
 }
 
-# synchronize root filesystems
-# sender: IRC
-sub os {
-    my ($self) = @_;
-    
-    # only push to os mirrors
-    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain from mirrors where os = 1");
-    foreach my $row (@$rows) {
-        my ($id, $mirror, $domain) = @$row;
-        `rsync -rlt --delete $self->{packaging}->{repo}->{os} $mirror`;
-        if ($? >> 8) {
-            $q_irc->enqueue(['mir', 'privmsg', "[mirror] failed to mirror rootfs to $domain"]);
-        }
-    }
-    $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring rootfs"]);
-}
-
 # queue updating mirrors for a given architecture
 # sender: Service
 sub queue {
@@ -190,7 +173,8 @@ sub queue {
     close (MYFILE);
     
     # queue tier 1 mirrors
-    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain, ?, ? from mirrors where tier = 1", undef, $arch, $self->{packaging}->{repo}->{$arch});
+    my $what = $arch eq 'os' ? 'os' : 'tier';
+    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain, ?, ? from mirrors where $what = 1", undef, $arch, $self->{packaging}->{repo}->{$arch});
     foreach my $row (@$rows) {
         push @{$self->{queue}}, $row;
         $self->{$arch}->{count}++;
@@ -248,7 +232,7 @@ sub _check {
         $self->{dbh}->do("insert into mirror_log (id, sent, speed, time, fail) values (?, ?, ?, ?, ?)", undef, $id, $sent, $speed, $time, $ret);
         
         # decrement and check number of mirrors left to rsync for this architecture
-        if (--$self->{$arch}->{count} == 0) {
+        if (--$self->{$arch}->{count} == 0 && $arch ne 'os') {
             # set one-shot timer to check Tier 2 mirrors after 120 seconds
             undef $self->{$arch}->{timer};
             AnyEvent->now_update;

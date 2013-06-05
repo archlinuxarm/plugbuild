@@ -167,10 +167,6 @@ sub _cb_publicmsg {
             case "!mirrors" {
                 $q_mir->enqueue(['irc', 'list']);
             }
-            case "!os" {
-                $q_mir->enqueue(['irc', 'os']);
-                $self->privmsg("[os] queued rootfs updates");
-            }
             case "!override" {
                 if ($arg) {
                     my ($pkg) = split(/ /, $arg, 2);
@@ -253,6 +249,9 @@ sub _cb_publicmsg {
                 if ($arg && ($arg eq '5' || $arg eq '6' || $arg eq '7')) {
                     $q_mir->enqueue(['irc', 'queue', "armv$arg"]);
                     $self->privmsg("[sync] queued armv$arg mirror update");
+                } elsif ($arg && $arg eq 'os') {
+                    $q_mir->enqueue(['irc', 'queue', 'os']);
+                    $self->privmsg("[sync] queued rootfs mirror update");
                 } else {
                     $q_mir->enqueue(['irc', 'queue', 'armv5']);
                     $q_mir->enqueue(['irc', 'queue', 'armv6']);
