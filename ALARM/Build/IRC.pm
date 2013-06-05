@@ -160,6 +160,10 @@ sub _cb_publicmsg {
             case "!maint" {
                 $q_svc->enqueue(['irc', 'maint', $arg || undef ]);
             }
+            case "!mirroring" {
+                my ($status) = $arg ? split(/ /, $arg, 2) : undef;
+                $q_svc->enqueue(['irc', 'mirroring', $status]);
+            }
             case "!mirrors" {
                 $q_mir->enqueue(['irc', 'list']);
             }

@@ -38,6 +38,7 @@ sub Run {
     $self->{clients} = \%clients;
     $self->{clientsref} = \%clientsref;
     $self->{poll_count} = 1;
+    $self->{mirroring} = 1;
     
     if ($available->down_nb()) {
         # start-up
@@ -226,6 +227,24 @@ sub maint {
             $handle->push_write(json => {command => 'maint'});
         }
         $q_irc->enqueue(['svc', 'privmsg', "[maint] Requested maintenance run on all builders."]);
+    }
+}
+
+# enable/disable mirroring after building for an architecture is finished
+# sender: IRC
+sub mirroring {
+    my ($self, $status) = @_;
+    
+    if ($status) {
+        if ($status eq 'on') {
+            $self->{mirroring} = 1;
+        } elsif ($status eq 'off') {
+            $self->{mirroring} = 0;
+        } else {
+            $q_irc->enqueue(['svc', 'privmsg', "[mirroring] usage: !mirroring [on|off]"]);
+        }
+    } else {
+        $q_irc->enqueue(['svc', 'privmsg', "[miroring] Mirroring is " . $self->{mirroring} ? "on" : "off"]);
     }
 }
 
@@ -654,7 +673,7 @@ sub _check_complete {
     }
     if ($total && $count == $total) {
         $q_irc->enqueue(['svc', 'privmsg', "[complete] found no package to issue for $arch, mirroring"]);
-        $q_mir->enqueue(['svc', 'queue', $arch]);
+        $q_mir->enqueue(['svc', 'queue', $arch]) if ($self->{mirroring});
         $self->{$arch} = 'stop';
     }
 }
