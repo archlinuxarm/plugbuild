@@ -14,6 +14,7 @@ use AnyEvent::TLS;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
 use JSON::XS;
+use WWW::Shorten::TinyURL;
 
 our $available = Thread::Semaphore->new(1);
 
@@ -725,7 +726,7 @@ sub _gh_read {
                 $data =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
                 my $json = decode_json $data;
                 foreach my $commit (@{$json->{commits}}) {
-                    $q_irc->enqueue(['svc', 'pubmsg', "[$json->{repository}->{name}] <$commit->{author}->{name}> $commit->{message}", 1]);
+                    $q_irc->enqueue(['svc', 'pubmsg', "[$json->{repository}->{name}] <$commit->{author}->{name}> $commit->{message} " . makeashorterlink($commit->{url}), 1]);
                     $self->{poll_count} = 2 if ($json->{repository}->{name} eq "PKGBUILDs");
                 }
                 $h->destroy;
