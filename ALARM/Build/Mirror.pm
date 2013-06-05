@@ -232,11 +232,13 @@ sub _check {
         $self->{dbh}->do("insert into mirror_log (id, sent, speed, time, fail) values (?, ?, ?, ?, ?)", undef, $id, $sent, $speed, $time, $ret);
         
         # decrement and check number of mirrors left to rsync for this architecture
-        if (--$self->{$arch}->{count} == 0 && $arch ne 'os') {
-            # set one-shot timer to check Tier 2 mirrors after 120 seconds
-            undef $self->{$arch}->{timer};
-            AnyEvent->now_update;
-            $self->{$arch}->{timer} = AnyEvent->timer(after => 120, cb => sub { $self->_tier2($arch, $self->{$arch}->{sync}); });
+        if (--$self->{$arch}->{count} == 0) {
+            if ($arch ne 'os') {
+                # set one-shot timer to check Tier 2 mirrors after 120 seconds
+                undef $self->{$arch}->{timer};
+                AnyEvent->now_update;
+                $self->{$arch}->{timer} = AnyEvent->timer(after => 120, cb => sub { $self->_tier2($arch, $self->{$arch}->{sync}); });
+            }
             $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring $arch"]);
         }
     }
