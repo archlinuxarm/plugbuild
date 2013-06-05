@@ -768,15 +768,18 @@ sub status {
                 my $status = "[$arch]$highmem$override $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
                 $status .= ", builder=>$builder" if $state eq 'building';
                 
-                my $time = $finish - $start;
+                my $time;
                 if ($state ne 'building') {
-                    if ($time < 0 || $time > 172800) {
-                        # ignore if negative duration or greater than 2 days
-                        $status .= ", time=>???";
-                    } else {
-                        my $s; my $duration = (($s=int($time/86400))?$s."d":'') . (($s=int(($time%86400)/3600))?$s."h":'') . (($s=int(($time%3600)/60))?$s."m":'') . (($s = $time%60)?$s."s":'');
-                        $status .= ", time=>$duration";
-                    }
+                    $time = $finish - $start;
+                } else {
+                    $time = time() - $start;
+                }
+                if ($time < 0 || $time > 172800) {
+                    # ignore if negative duration or greater than 2 days
+                    $status .= ", time=>???";
+                } else {
+                    my $s; my $duration = (($s=int($time/86400))?$s."d":'') . (($s=int(($time%86400)/3600))?$s."h":'') . (($s=int(($time%3600)/60))?$s."m":'') . (($s = $time%60)?$s."s":'');
+                    $status .= ", time=>$duration";
                 }
                 
                 # generate list of packages blocking this package from building
