@@ -244,9 +244,8 @@ sub mirroring {
         } else {
             $q_irc->enqueue(['svc', 'privmsg', "[mirroring] usage: !mirroring [on|off]"]);
         }
-    } else {
-        $q_irc->enqueue(['svc', 'privmsg', "[miroring] Mirroring is " . $self->{mirroring} ? "on" : "off"]);
     }
+    $q_irc->enqueue(['svc', 'privmsg', sprintf("[miroring] Mirroring is %s", $self->{mirroring} ? "on" : "off")]);
 }
 
 # next package response
