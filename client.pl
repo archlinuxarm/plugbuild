@@ -347,10 +347,6 @@ sub build_start {
     system("wget $workurl/$repo-$pkgbase.tgz");
     system("tar -zxf $workroot/$repo-$pkgbase.tgz");
     
-    # strip lingering illegal force option
-    chdir "$workroot/$pkgbase";
-    `sed -i "/^options=/s/force//" PKGBUILD`;
-    
     # rebuild sources in case of old/bad checksums
     print " -> Rebuild sources\n";
     system("echo '' >> PKGBUILD"); # echo blank line for malformed PKGBUILDs
@@ -361,7 +357,7 @@ sub build_start {
     
     # build package, replace perl process with mkarchroot
     print " -> Building package\n";
-    exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -AcsfrL --skippgpcheck --nocheck 2>&1 | tee $pkgbase-$version-$arch.log; test \${PIPESTATUS[0]} -eq 0") or print "couldn't exec: $!";
+    exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -AcsfrL --skippgpcheck --nocheck --noprogressbar > $pkgbase-$version-$arch.log 2>&1") or print "couldn't exec: $!";
 }
 
 sub build_finish {
