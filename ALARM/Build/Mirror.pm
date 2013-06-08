@@ -164,6 +164,12 @@ sub queue {
     my ($self, $arch) = @_;
     print "Mirror: queuing $arch\n";
     
+    # refuse to mirror an arch if it's already mirroring
+    if ($self->{$arch}->{count} > 0) {
+        $q_irc->enqueue(['db', 'privmsg', "[queue] Refusing to mirror $arch - sync already in progress"]);
+        return;
+    }
+    
     # save time for tier 2 sync check
     $self->{$arch}->{sync} = time();
     
