@@ -346,6 +346,7 @@ sub build_start {
     chdir "$workroot";
     system("wget $workurl/$repo-$pkgbase.tgz");
     system("tar -zxf $workroot/$repo-$pkgbase.tgz");
+    chdir "$workroot/$pkgbase";
     
     # rebuild sources in case of old/bad checksums
     print " -> Rebuild sources\n";
