@@ -358,7 +358,7 @@ sub build_start {
     
     # build package, replace perl process with mkarchroot
     print " -> Building package\n";
-    exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -AcsfrL --skippgpcheck --nocheck --noprogressbar > $pkgbase-$version-$arch.log 2>&1") or print "couldn't exec: $!";
+    exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -Acsfr --skippgpcheck --nocheck --noprogressbar > $pkgbase-$version-$arch.log 2>&1") or print "couldn't exec: $!";
 }
 
 sub build_finish {
