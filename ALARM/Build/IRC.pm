@@ -196,6 +196,9 @@ sub _cb_publicmsg {
                     $q_db->enqueue(['irc', 'prune', $pkg]);
                 }
             }
+            case "!push" {
+                $q_svc->enqueue(['irc', 'push_build']);
+            }
             case "!ready" {
                 my ($arch) = $arg ? split(/ /, $arg, 2) : undef;
                 if ($arch) {
@@ -231,8 +234,12 @@ sub _cb_publicmsg {
                 }
             }
             case ["!start", "!stop"] {
-                if (my ($what) = split(/ /, $arg, 2)) {
-                    $q_svc->enqueue(['irc', 'build', substr($trigger, 1), $what]);
+                if ($arg && ($arg eq '5' || $arg eq '6' || $arg eq '7')) {
+                    $q_svc->enqueue(['irc', substr($trigger, 1), "armv$arg"]);
+                } elsif ($arg && ($arg eq 'all')) {
+                    $q_svc->enqueue(['irc', substr($trigger, 1), "armv5"]);
+                    $q_svc->enqueue(['irc', substr($trigger, 1), "armv6"]);
+                    $q_svc->enqueue(['irc', substr($trigger, 1), "armv7"]);
                 } else {
                     $self->privmsg("usage: $trigger <all|5|6|7>");
                 }

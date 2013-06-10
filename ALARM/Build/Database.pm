@@ -1040,6 +1040,9 @@ sub update_continue {
         }
     }
     $q_irc->enqueue(['db', 'privmsg', "Update complete."]);
+    
+    # send number of ready packages to service
+    $self->ready_list();
 }
 
 ################################################################################

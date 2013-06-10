@@ -42,10 +42,12 @@ sub Run {
     $self->{mirroring} = 1;
     
     if ($available->down_nb()) {
-        # start-up
+        # start TCP servers
         my $service = tcp_server undef, $self->{port}, sub { $self->_cb_accept(@_, 0); };
         my $nodesvc = tcp_server "127.0.0.1", $self->{port}+1, sub { $self->_node_accept(@_, 0); };
         my $github = tcp_server undef, $self->{port}+2, sub { $self->_gh_accept(@_); };
+        
+        # thread queue check timer
         my $timer = AnyEvent->timer(interval => .5, cb => sub { $self->_cb_queue(@_); });
         
         # initial poll, all sources, after 60 seconds
@@ -54,6 +56,11 @@ sub Run {
         my $poll_git = AnyEvent->timer(after => 360, interval => 300, cb => sub { if ($self->{poll_count}) { --$self->{poll_count}; $q_db->enqueue(['svc', 'poll', 'git']); } });
         # poll abs sources every 30 minutes, starting after 1860 seconds (30 minutes later)
         my $poll_abs = AnyEvent->timer(after => 1860, interval => 1800, cb => sub { $q_db->enqueue(['svc', 'poll', 'abs']); });
+        
+        # get number of packages ready to be built
+        $q_db->enqueue(['svc', 'ready_list']);
+        
+        # enter event loop
         $self->{condvar}->wait;
         
         # shutdown
@@ -124,27 +131,6 @@ sub arches {
         $self->{$arch} = 'stop' unless defined $self->{$arch};
     }
     print "SVC: now serving architectures: " . join(' ', sort keys %{$self->{arch}}) . "\n";
-}
-
-# start or stop building
-# sender: IRC
-sub build {
-    my ($self, $action, $what) = @_;
-    if (!defined $self->{$what} && $what ne 'all') {    # determine if we were given shorthand arch string or not
-        $what = "armv$what";
-        if (!defined $self->{$what}) {
-            $q_irc->enqueue(['db', 'privmsg', "$action <all|5|6|7>"]);
-        }
-    }
-    if ($what eq 'all') {
-        foreach my $arch (sort keys %{$self->{arch}}) {
-            $self->{$arch} = $action;
-        }
-        $self->_push_builder($action);
-    } else {
-        $self->{$what} = $action;
-        $self->_push_builder($action, $what);
-    }
 }
 
 # repo command for farmer
@@ -249,7 +235,7 @@ sub mirroring {
 }
 
 # next package response
-# sender: Datbase
+# sender: Database
 sub next_pkg {
     my ($self, $arch, $cn, $data) = @_;
     my $handle = $self->{clientsref}->{"builder/$cn"};
@@ -268,19 +254,7 @@ sub next_pkg {
         $builder->{state} = 'idle';
         undef $builder->{pkgbase};
         undef $builder->{arch};
-        $self->_check_complete($arch) if ($self->{$arch} eq 'start');    # check if all builders are done on this arch
-        my $found = 0;
-        foreach my $test_arch (@{$builder->{available}}) {              # walk available list
-            next if ($test_arch ne $arch && !$found);                   # skip arches until we reach the current arch in available list
-            if ($test_arch eq $arch)  {                                 # found last tested arch, skip to next
-                $found = 1;
-                next;
-            }
-            if ($self->{$test_arch} eq 'start') {                       # push for next arch if it's started
-                $self->_push_builder('start', $test_arch, $builder);
-                last;
-            }
-        }
+        print "SVC: next_pkg: something bad happened, got FAIL for $cn on $builder->{arch}\n";
     }
 }
 
@@ -289,7 +263,28 @@ sub next_pkg {
 sub push_build {
     my ($self) = @_;
     
-    $self->_push_builder("start");
+    # push to available builders
+    foreach my $oucn (keys %{$self->{clientsref}}) {
+        next if (!($oucn =~ m/builder\/.*/));
+        my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
+        next if ($builder->{state} ne 'idle');
+        
+        foreach my $arch (@{$builder->{available}}) {
+            # skip stopped architecture
+            next if ($self->{$arch} eq 'stop');
+            # calculate available packages based on highmem
+            my $total = $builder->{highmem} ? $self->{ready}->{$arch}->{total} : $self->{ready}->{$arch}->{total} - $self->{ready}->{$arch}->{highmem};
+            # skip arch if no packages are available
+            next if ($total == 0);
+            
+            # get next package
+            $builder->{state} = 'check';
+            $builder->{arch} = $arch;
+            $q_db->enqueue(['svc', 'next_pkg', $arch, $builder->{cn}, $builder->{highmem}]);
+            $self->{ready}->{$arch}->{total}--;
+            $self->{ready}->{$arch}->{highmem}-- if $builder->{highmem};
+        }
+    }
 }
 
 # quit service thread
@@ -301,10 +296,55 @@ sub quit {
     return;
 }
 
-# information on number of packages ready to build for each architecture
+# store information on number of packages ready to build for each architecture
 # sender: Database
 sub ready {
+    my ($self, $info) = @_;
     
+    $self->{ready} = $info;
+    
+    foreach my $arch (keys %{$self->{arch}}) {
+        next unless $self->{ready}->{$arch}->{total} == 0;
+        $self->_check_complete($arch) if ($self->{$arch} eq 'start');
+    }
+}
+
+# mark an architecture as available to build
+# sender: Database, Internal
+sub start {
+    my ($self, $arch) = @_;
+    
+    if (!$self->{arch}) {
+        $q_irc->enqueue(['svc', 'privmsg', "[start] No such architecture $arch"]);
+        return;
+    }
+    
+    if ($self->{ready}->{$arch}->{total} && $self->{ready}->{$arch}->{total} == 0) {
+        $q_irc->enqueue(['svc', 'privmsg', "[start] No packages available for $arch"]);
+        return;
+    }
+    
+    $q_irc->enqueue(['svc', 'privmsg', "[start] Starting $arch"]);
+    $self->{$arch} = 'start';
+}
+
+# mark an architecture as not available to build
+# sender: Database, Internal
+sub stop {
+    my ($self, $arch) = @_;
+    
+    if (!$self->{arch}) {
+        $q_irc->enqueue(['svc', 'privmsg', "[stop] No such architecture $arch"]);
+        return;
+    }
+    
+    if ($self->{arch} eq 'stop') {
+        $q_irc->enqueue(['svc', 'privmsg', "[stop] $arch is already stopped"]);
+        return;
+    }
+    
+    $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
+    $self->{$arch} = 'stop';
 }
 
 # rsync push to farmer complete, set farmer ready
@@ -420,11 +460,7 @@ sub _cb_read {
                         $client->{state} = 'idle';
                         undef $client->{pkgbase};
                         undef $client->{arch};
-                        if ($self->{$client->{primary}} eq 'start') {           # if the builder's primary is active, push for packages for that
-                            $self->_push_builder('start', $client->{primary});
-                        } else {                                                # otherwise, the package's arch will still be active so push for that
-                            $self->_push_builder('start', $data->{arch});
-                        }
+                        $self->push_build();
                     }
                     
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'done', arch => $data->{arch}, package => $data->{pkgbase} } }]);
@@ -442,11 +478,7 @@ sub _cb_read {
                     undef $client->{pkgbase};
                     undef $client->{arch};
                     $client->{state} = 'idle';
-                    if ($self->{$client->{primary}} eq 'start') {               # if the builder's primary is active, push for packages for that
-                        $self->_push_builder('start', $client->{primary});
-                    } else {                                                    # otherwise, the package's arch will still be active so push for that
-                        $self->_push_builder('start', $data->{arch});
-                    }
+                    $self->push_build();
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'fail', arch => $data->{arch}, package => $data->{pkgbase} } }]);
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
                 }
@@ -766,56 +798,6 @@ sub _node_accept {
                    cn       => "nodejs" );      # CN = nodejs
     $self->{clients}->{$h} = \%client;
     $self->{clientsref}->{"admin/nodejs"} = $h;
-}
-
-# push next packages/stop to builders
-sub _push_builder {
-    my ($self, $action, $arch, $target) = @_;
-    my $count = 0;
-    
-    # push to target builder
-    if (defined $target) {
-        if ($action eq "start" && $target->{state} eq "idle") {
-            $target->{state} = 'check';
-            $target->{arch} = $arch;
-            $q_db->enqueue(['svc', 'next_pkg', $arch, $target->{cn}, $target->{highmem}]);
-        } elsif ($arch eq "stop") {
-            $target->{handle}->push_write(json => {command => 'stop'});
-        }
-        return;
-    }
-    
-    # push to available builders
-    foreach my $oucn (keys %{$self->{clientsref}}) {
-        next if (!($oucn =~ m/builder\/.*/));
-        my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
-        
-        my $use_arch = $builder->{primary};     # set to use builder's primary arch
-        if (defined $arch) {                    # though if we're starting only a specific arch..
-            if (grep {$_ eq $arch} @{$builder->{available}}) {
-                $use_arch = $arch;              # and it's available, so we can use it
-            } else {
-                next;                           # unless it isn't, so we check the next builder
-            }
-        }                                       # otherwise, using the primary arch
-        
-        if ($action eq "start") {
-            next if ($builder->{state} ne 'idle');
-            $builder->{state} = 'check';
-            $builder->{arch} = $use_arch;
-            $q_db->enqueue(['svc', 'next_pkg', $use_arch, $builder->{cn}, $builder->{highmem}]);
-            $count++;
-        } elsif ($action eq "stop") {
-            next if ($builder->{state} eq 'idle');
-            next if ($arch && $builder->{arch} ne $arch);
-            $builder->{handle}->push_write(json => {command => 'stop'});
-            $count++;
-        }
-    }
-    
-    if (!$count) {
-        $q_irc->enqueue(['svc', 'privmsg', "[$action] no builders to $action"]);
-    }
 }
 
 1;
