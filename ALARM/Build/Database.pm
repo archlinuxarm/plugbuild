@@ -272,6 +272,7 @@ sub pkg_add {
 sub pkg_done {
     my ($self, $arch, $package) = @_;
     $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 1, a.fail = 0, a.finish = unix_timestamp() where abs.package = ?", undef, $package);
+    $self->ready_list();
 }
 
 # set package fail
@@ -279,6 +280,7 @@ sub pkg_done {
 sub pkg_fail {
     my ($self, $arch, $package) = @_;
     $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 0, a.fail = 1, a.finish = unix_timestamp() where abs.package = ?", undef, $package);
+    $self->ready_list();
 }
 
 # toggle highmem status for a package
@@ -360,7 +362,8 @@ sub pkg_prep {
 # sender: Service
 sub pkg_release {
     my ($self, $arch, $builder, $data) = @_;
-    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.start = unix_timestamp() where abs.package = ?", undef, $data->{pkgbase})
+    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.stop = unix_timestamp() where abs.package = ?", undef, $data->{pkgbase});
+    $self->ready_list();
 }
 
 # (de)select package from building for an architecture
@@ -439,6 +442,9 @@ sub pkg_unfail {
             $q_irc->enqueue(['db', 'privmsg', "Unfailed $package for $arch; however, the package is skipped for this architecture."]);
         }
     }
+    
+    # send updated list to service
+    $self->ready_list();
 }
 
 # poll git sources for new packages

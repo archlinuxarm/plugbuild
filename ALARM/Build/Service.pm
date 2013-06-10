@@ -269,6 +269,7 @@ sub push_build {
         my $builder = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
         next if ($builder->{state} ne 'idle');
         
+        # get a package to build in order of listed available architectures for the builder
         foreach my $arch (@{$builder->{available}}) {
             # skip stopped architecture
             next if ($self->{$arch} eq 'stop');
@@ -303,10 +304,14 @@ sub ready {
     
     $self->{ready} = $info;
     
+    # check if builders are done if total is 0 and arch is started
     foreach my $arch (keys %{$self->{arch}}) {
         next unless $self->{ready}->{$arch}->{total} == 0;
         $self->_check_complete($arch) if ($self->{$arch} eq 'start');
     }
+    
+    # start any available builders based on the new information
+    $self->push_build();
 }
 
 # mark an architecture as available to build
@@ -460,7 +465,6 @@ sub _cb_read {
                         $client->{state} = 'idle';
                         undef $client->{pkgbase};
                         undef $client->{arch};
-                        $self->push_build();
                     }
                     
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'done', arch => $data->{arch}, package => $data->{pkgbase} } }]);
@@ -478,7 +482,6 @@ sub _cb_read {
                     undef $client->{pkgbase};
                     undef $client->{arch};
                     $client->{state} = 'idle';
-                    $self->push_build();
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'package', package => { state => 'fail', arch => $data->{arch}, package => $data->{pkgbase} } }]);
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
                 }
