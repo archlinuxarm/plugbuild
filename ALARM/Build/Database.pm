@@ -793,7 +793,7 @@ sub status {
                     $status .= ", blocked on: ";
                     foreach my $blockrow (@$blocklist) {
                         my ($blockrepo, $blockpkg, $blockfail, $blockskip, $blockdel) = @$blockrow;
-                        $status .= sprintf("%s/%s (%s) ", $blockrepo, $blockpkg, $blockdel?"D":!$blockskip?"S":$blockfail?"F":"N");
+                        $status .= sprintf("%s/%s (%s) ", $blockrepo, $blockpkg, $blockdel?"D":!($blockskip & $self->{skip}->{$arch})?"S":$blockfail?"F":"N");
                     }
                 }
                 
@@ -1016,7 +1016,7 @@ sub update_continue {
     
     # build new dep tables
     $q_irc->enqueue(['db', 'privmsg', "Building dependencies.."]);
-    my $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides, depends, makedepends from abs where del = 0 and skip != 0");
+    my $rows = $self->{dbh}->selectall_arrayref("select id, pkgname, provides, depends, makedepends from abs where del = 0");
     $self->{dbh}->do("delete from names");
     $self->{dbh}->do("delete from deps");
     foreach my $row (@$rows) {
