@@ -185,17 +185,15 @@ sub force {
 # sender: Service
 sub next_pkg {
     my ($self, $arch, $builder, $highmem) = @_;
-    my $memstr = $highmem?"":"and p.highmem = 0";
+    my $memstr = $highmem?"":"and abs.highmem = 0";
     if (defined($self->{dbh})) {
     	$self->{dbh}->do("update $arch set builder = null where builder = ?", undef, $builder);
-        my @pkg = $self->{dbh}->selectrow_array("select
-            p.repo, p.package, p.pkgver, p.pkgrel, p.depends, p.makedepends
-            from abs as p
-            join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
-            where p.skip & ? > 0 and p.del = 0 $memstr
-            group by p.id
-            having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance limit 1",
+        my @pkg = $self->{dbh}->selectrow_array("select repo, pkg, pkgver, pkgrel from
+            (select repo, pkg, pkgver, pkgrel, count(pkg) as cnt, sum(done) as sd from
+                (select repo, abs.package as pkg, pkgver, pkgrel, max(a2.done) as done, importance, highmem from abs
+                inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null $memstr)
+                left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep) left join $arch as a2 ON (a2.id = n.package)
+                group by d.id , name) as x group by pkg order by highmem desc, importance) as xx where cnt = sd or sd is null limit 1",
             undef, $self->{skip}->{$arch});
         if (!$pkg[0]) {
             $q_svc->enqueue(['db', 'next_pkg', $arch, $builder, { command => 'next', pkgbase => "FAIL" }]);
@@ -583,17 +581,13 @@ sub ready {
     my $ret = "Packages waiting to be built: ";
     
     foreach my $arch (sort keys %{$self->{arch}}) {
-        my @next_pkg = $self->{dbh}->selectrow_array("select count(*) from (
-            select
-                p.repo, p.package, p.depends, p.makedepends
-                from
-                abs as p
-                    join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
-                where p.skip & ? > 0 and p.del = 0  
-                group by p.id
-                having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
-            ) as xx", undef, $self->{skip}->{$arch});
+        my @next_pkg = $self->{dbh}->selectrow_array("select count(pkg) from
+            (select pkg, count(pkg) as cnt, sum(done) as sd from
+                (select abs.package as pkg, max(a2.done) as done from abs
+                inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null)
+                left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep)
+                left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
+            group by pkg) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
         $ret .= "$arch: $next_pkg[0], ";
     }
     $ret =~ s/, $//;
@@ -614,27 +608,26 @@ sub ready_detail {
         }
     }
     
-    my $rows = $self->{dbh}->selectall_arrayref("select
-        p.repo, p.package, p.depends, p.makedepends
-        from
-        abs as p
-            join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
-        where p.skip & ? > 0 and p.del = 0
-        group by p.id
-        having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) ) order by p.importance",
-        undef, $self->{skip}->{$arch});
+    # get names of packages and their repo
+    my $rows = $self->{dbh}->selectall_arrayref("select repo, pkg from
+        (select repo, pkg, count(pkg) as cnt, sum(done) as sd from
+            (select repo, abs.package as pkg, max(a2.done) as done, importance from abs
+            inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null)
+            left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep)
+            left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
+        group by pkg order by importance) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
     
-	my $ret = undef;
-	my $cnt = 0;
-	foreach my $row (@$rows) {
+    # count number of packages and build return string
+    my $ret = undef;
+    my $cnt = 0;
+    foreach my $row (@$rows) {
         my ($repo, $package) = @$row;
-	    $ret .= "$repo/$package, ";
-	    $cnt++;
-	}
+        $ret .= "$repo/$package, ";
+        $cnt++;
+    }
     $ret =~ s/, $// if $cnt > 0;
     
-    $q_irc->enqueue(['db', 'privmsg', "Packages waiting to be built: $cnt"]);
+    $q_irc->enqueue(['db', 'privmsg', "Packages waiting to be built for $arch: $cnt"]);
     $q_irc->enqueue(['db', 'privmsg', "Packages waiting: $ret"]) if $cnt > 0;
 }
 
@@ -645,18 +638,15 @@ sub ready_list {
     my %ret;
     
     foreach my $arch (sort keys %{$self->{arch}}) {
-        my @row = $self->{dbh}->selectrow_array("select count(*) from (
-            select
-                p.repo, p.package, p.depends, p.makedepends
-                from
-                abs as p
-                    join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-                    left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
-                where p.skip & ? > 0 and p.del = 0  
-                group by p.id
-                having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
-            ) as xx", undef, $self->{skip}->{$arch});
-        $ret{$arch} = $row[0];
+        my @row = $self->{dbh}->selectrow_array("select count(pkg), sum(highmem) from
+            (select pkg, count(pkg) as cnt, sum(done) as sd, highmem from
+                (select abs.package as pkg, max(a2.done) as done, highmem from abs
+                inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null)
+                left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep)
+                left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
+            group by pkg) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
+        $ret{$arch}{total} = $row[0];
+        $ret{$arch}{highmem} = $row[1];
     }
     
     $q_svc->enqueue(['db', 'ready', \%ret]);
