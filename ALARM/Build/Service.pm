@@ -284,6 +284,7 @@ sub push_build {
             $q_db->enqueue(['svc', 'next_pkg', $arch, $builder->{cn}, $builder->{highmem}]);
             $self->{ready}->{$arch}->{total}--;
             $self->{ready}->{$arch}->{highmem}-- if $builder->{highmem};
+            last;
         }
     }
 }
