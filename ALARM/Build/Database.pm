@@ -1146,7 +1146,7 @@ sub _process {
                 $q_irc->enqueue(['db', 'privmsg', "[process] Removing hold on $repo/$pkg, overlay version deleted"]);
                 $self->{dbh}->do("delete from queue where path = ?", undef, $git_path);     # remove deleted overlay package from queue
                 $self->{dbh}->do("update queue set hold = 0 where path = ?", undef, $path); # remove hold on upstream package
-                #$self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
+                $self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
                 print "[process] mysql: update abs set git = 0 where package = $pkg\n";
                 next;
             }
@@ -1203,31 +1203,31 @@ sub _process {
             } elsif ($type eq 'abs') {
                 if ($db_git == 1) {         # warn us that upstream has trashed something we track, adjust abs flag
                     $q_irc->enqueue(['db', 'privmsg', "[process] Upstream has removed $repo/$pkg, also tracked in overlay"]);
-                    #$self->{dbh}->do("update abs set abs = 0 where package = ?", undef, $pkg);
+                    $self->{dbh}->do("update abs set abs = 0 where package = ?", undef, $pkg);
                     print "[process] mysql: update abs set abs = 0 where package = $pkg\n";
                 } else {                    # otherwise trash the package
                     $q_irc->enqueue(['db', 'privmsg', "[process] Deleting $repo/$pkg (upstream)"]);
-                    #$self->{dbh}->do("update abs set abs = 0, del = 1 where package = ?", undef, $pkg);
-                    #$self->{dbh}->do("delete from names where package = ?", undef, $db_id);
-                    #$self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
+                    $self->{dbh}->do("update abs set abs = 0, del = 1 where package = ?", undef, $pkg);
+                    $self->{dbh}->do("delete from names where package = ?", undef, $db_id);
+                    $self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
                     print "[process] mysql: update abs set abs = 0, del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
-                        #$self->pkg_prep($arch, { pkgbase => $pkg });
+                        $self->pkg_prep($arch, { pkgbase => $pkg });
                         print "[process] deleting $arch/$pkg\n";
                     }
                 }
             } elsif ($type eq 'git') {
                 if ($db_abs == 1) {         # switch to abs, no rebuilding but remove any holds to release upstream replacement
-                    #$self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
+                    $self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
                     print "[process] mysql: update abs set git = 0 where package = $pkg\n";
                 } else {                    # otherwise, trash the package
                     $q_irc->enqueue(['db', 'privmsg', "[process] Deleting $repo/$pkg (overlay)"]);
-                    #$self->{dbh}->do("update abs set git = 0, abs = 0, del = 1 where package = ?", undef, $pkg);
-                    #$self->{dbh}->do("delete from names where package = ?", undef, $db_id);
-                    #$self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
+                    $self->{dbh}->do("update abs set git = 0, abs = 0, del = 1 where package = ?", undef, $pkg);
+                    $self->{dbh}->do("delete from names where package = ?", undef, $db_id);
+                    $self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
                     print "[process] mysql: update abs set git = 0, abs = 0, del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
-                        #$self->pkg_prep($arch, { pkgbase => $pkg });
+                        $self->pkg_prep($arch, { pkgbase => $pkg });
                         print "[process] deleting $arch/$pkg\n";
                     }
                 }
@@ -1243,18 +1243,18 @@ sub _process {
         # create work unit
         if ($type eq 'abs') {
             my ($strip) = $path =~ /.*\/([^\/]*)$/;
-            #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$path/.." "$strip" --transform 's,^$strip,$pkg,' > /dev/null`;
+            `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$path/.." "$strip" --transform 's,^$strip,$pkg,' > /dev/null`;
             print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$path/..\" \"$strip\" --transform 's,^$strip,$pkg,' > /dev/null\n";
         } elsif ($type eq 'git') {
             my ($strip) = $path =~ /(.*)\/[^\/]*$/;
-            #`tar -zcf "$workroot/$repo-$pkg.tgz" -C "$strip" "$pkg" > /dev/null`;
+            `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$strip" "$pkg" > /dev/null`;
             print "[process] work unit: tar -zcf \"$workroot/$repo-$pkg.tgz\" -C \"$strip\" \"$pkg\" > /dev/null\n";
         }
         
         # relocate package if repo has changed
         if (defined $db_repo && $db_repo ne $repo) {
             print "[process] relocating $db_repo/$pkg to $repo\n";
-            #$self->_pkg_relocate($pkg, $repo);
+            $self->_pkg_relocate($pkg, $repo);
         }
         
         # update abs table
@@ -1264,9 +1264,9 @@ sub _process {
         my $is_highmem = $type eq 'git' ? $highmem : defined $db_highmem ? $db_highmem : 0;
         my $is_done = $noautobuild ? 1 : 0; # noautobuild set, assume built, done = 1
         
-        #$self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, highmem, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-        #                  on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = ?, abs = ?, skip = ?, highmem = ?, del = 0, importance = ?",
-        #                  undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance);
+        $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, highmem, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                          on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = ?, abs = ?, skip = ?, highmem = ?, del = 0, importance = ?",
+                          undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance);
         print "[process] update abs: $repo/$pkg $pkgver-$pkgrel, git: $is_git, abs: $is_abs skip: $is_skip, highmem: $is_highmem, importance: $importance\n";
         
         # new package, different version, update, done = 0
@@ -1276,14 +1276,16 @@ sub _process {
             # update architecture tables
             foreach my $arch (keys %{$self->{arch}}) {
                 next unless ($self->{skip}->{$arch} & $is_skip);    # don't update skipped architectures
-                #$self->{dbh}->do("insert into $arch (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
+                $self->{dbh}->do("insert into $arch (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
                 print "[process] setting done = 0, fail = 0 on $arch table\n";
             }
+        
+        # changes to files without version bump, if package is failed then unfail it
         } else {
             foreach my $arch (keys %{$self->{arch}}) {
                 my ($fail) = $self->{dbh}->selectrow_array("select fail from $arch where id = ?", undef, $db_id);
                 if ($fail == 1) {
-                    #$self->{dbh}->do("insert into $arch (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
+                    $self->{dbh}->do("insert into $arch (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
                     print "[process] detected updates without version bump, unfailing $arch/$pkg\n";
                 }
             }
@@ -1291,8 +1293,8 @@ sub _process {
         
         # update dependency tables
         ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
-        #$self->{dbh}->do("delete from names where package = ?", $db_id);
-        #$self->{dbh}->do("delete from deps where id = ?", $db_id);
+        $self->{dbh}->do("delete from names where package = ?", $db_id);
+        $self->{dbh}->do("delete from deps where id = ?", $db_id);
         print "[process] $pkg: delete from names/deps where package/id = $db_id\n";
         my @names = split(/ /, join(' ', $pkgname, $provides));
         my %deps;
@@ -1301,7 +1303,7 @@ sub _process {
         foreach my $name (@names) {
             $name =~ s/(<|=|>).*//;
             next if ($name eq "");
-            #$self->{dbh}->do("insert into names values (?, ?)", undef, $name, $db_id);
+            $self->{dbh}->do("insert into names values (?, ?)", undef, $name, $db_id);
         }
         print "[process] $pkg names: $pkgname $provides\n";
         
@@ -1315,9 +1317,9 @@ sub _process {
                 next if (grep {$_ eq $name} @names);
                 $deps{$name} = 1;
             }
-            #foreach my $dep (keys %deps) {
-            #    $self->{dbh}->do("insert into deps values (?, ?)", undef, $id, $dep);
-            #}
+            foreach my $dep (keys %deps) {
+                $self->{dbh}->do("insert into deps values (?, ?)", undef, $db_id, $dep);
+            }
             print "[process] $pkg deps: $depends $makedepends\n";
         }
         
@@ -1329,17 +1331,21 @@ sub _process {
     # start architectures without holds
     foreach my $arch (keys %{$self->{arch}}) {
         next if ($self->{skip}->{$arch} & $hold_total);
-        my ($ready) = $self->{dbh}->selectrow_array("select count(*) from (
-            select p.repo, p.package, p.depends, p.makedepends from abs as p
-            join $arch as a on (a.id = p.id and a.done = 0 and a.fail = 0 and a.builder is null)
-            left outer join (select d.id as id, max(done) as done from deps as d inner join names as n on (n.name = d.dep) inner join $arch as a on (a.id = n.package) group by id, name) as d on (d.id = p.id)
-            where p.skip & ? > 0 and p.del = 0 group by p.id having (count(d.id) = sum(d.done) or (p.depends = '' and p.makedepends = '' ) )
-            ) as xx", undef, $self->{skip}->{$arch});
+        my ($ready) = $self->{dbh}->selectrow_array("select count(pkg) from
+            (select pkg, count(pkg) as cnt, sum(done) as sd from
+                (select abs.package as pkg, max(a2.done) as done from abs
+                inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null)
+                left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep)
+                left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
+            group by pkg) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
         if ($ready > 0) {
             #$q_svc->enqueue(['db', 'start', $arch]);
             print "[process] starting $arch\n";
         }
     }
+    
+    # send ready list to service
+    $self->ready_list();
     
     # push start
     #$q_svc->enqueue(['db', 'push_build']);
