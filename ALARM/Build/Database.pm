@@ -652,7 +652,7 @@ sub ready_list {
                 left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
             group by pkg) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
         $ret{$arch}{total} = $row[0];
-        $ret{$arch}{highmem} = $row[1];
+        $ret{$arch}{highmem} = $row[1] || 0;
     }
     
     $q_svc->enqueue(['db', 'ready', \%ret]);

@@ -330,6 +330,11 @@ sub start {
         return;
     }
     
+    if ($self->{arch} eq 'start') {
+        $q_irc->enqueue(['svc', 'privmsg', "[start] $arch is already started"]);
+        return;
+    }
+    
     $q_irc->enqueue(['svc', 'privmsg', "[start] Starting $arch"]);
     $self->{$arch} = 'start';
 }
