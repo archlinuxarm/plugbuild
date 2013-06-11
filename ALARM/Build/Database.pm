@@ -1293,8 +1293,8 @@ sub _process {
         
         # update dependency tables
         ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
-        $self->{dbh}->do("delete from names where package = ?", $db_id);
-        $self->{dbh}->do("delete from deps where id = ?", $db_id);
+        $self->{dbh}->do("delete from names where package = ?", undef, $db_id);
+        $self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
         print "[process] $pkg: delete from names/deps where package/id = $db_id\n";
         my @names = split(/ /, join(' ', $pkgname, $provides));
         my %deps;
