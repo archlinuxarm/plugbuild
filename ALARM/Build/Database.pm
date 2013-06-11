@@ -1173,7 +1173,7 @@ sub _process {
         } else {
             $hold_total |= int($skip);  # calculate arches to hold, used at the end
             my $svn_repo = $repo eq "core" || $repo eq "extra" ? "packages" : $repo eq "community" ? "community" : $repo;
-            $q_irc->enqueue(['db', 'privmsg', "[process] Holding $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches " . makeashorterlink("https://projects.archlinux.org/svntogit/$svn_repo.git/log/trunk?h=packages/$pkg")]);
+            $q_irc->enqueue(['db', 'privmsg', "[process] Holding $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches, changes: " . makeashorterlink("https://projects.archlinux.org/svntogit/$svn_repo.git/log/trunk?h=packages/$pkg")]);
         }
     }
     

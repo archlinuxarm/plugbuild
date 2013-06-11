@@ -766,7 +766,7 @@ sub _gh_read {
                 $data =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
                 my $json = decode_json $data;
                 foreach my $commit (@{$json->{commits}}) {
-                    $q_irc->enqueue(['svc', 'pubmsg', "[$json->{repository}->{name}] <$commit->{author}->{name}> $commit->{message} " . makeashorterlink($commit->{url}), 1]);
+                    $q_irc->enqueue(['svc', 'pubmsg', "[$json->{repository}->{name}] <" . makeashorterlink($commit->{url}) . "> $commit->{author}->{name}: $commit->{message} "]);
                     $self->{poll_count} = 2 if ($json->{repository}->{name} eq "PKGBUILDs");
                 }
                 $h->destroy;
