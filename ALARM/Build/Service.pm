@@ -326,7 +326,7 @@ sub start {
     }
     
     if ($self->{ready}->{$arch}->{total} && $self->{ready}->{$arch}->{total} == 0) {
-        $q_irc->enqueue(['svc', 'privmsg', "[start] No packages available for $arch"]);
+        $q_irc->enqueue(['svc', 'privmsg', "[start] No packages available for $arch, not starting"]);
         return;
     }
     
@@ -343,6 +343,15 @@ sub start {
 # sender: Database, Internal
 sub stop {
     my ($self, $arch) = @_;
+    
+    if ($arch eq 'all') {
+        foreach my $a (keys %{$self->{arch}}) {
+            next if ($self->{$a} eq 'stop');
+            $self->{$a} = 'stop';
+            $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
+        }
+        return;
+    }
     
     if (!$self->{arch}) {
         $q_irc->enqueue(['svc', 'privmsg', "[stop] No such architecture $arch"]);
