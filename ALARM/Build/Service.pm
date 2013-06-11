@@ -348,7 +348,7 @@ sub start {
 # sender: IRC
 sub status {
     my ($self) = @_;
-    foreach my $arch (keys %{$self->{arch}}) {
+    foreach my $arch (sort keys %{$self->{arch}}) {
         $q_irc->enqueue(['svc', 'privmsg', "[status] $arch: " . $self->{$arch}]);
     }
 }
