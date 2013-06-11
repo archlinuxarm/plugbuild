@@ -1297,7 +1297,6 @@ sub _process {
         $self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
         print "[process] $pkg: delete from names/deps where package/id = $db_id\n";
         my @names = split(/ /, join(' ', $pkgname, $provides));
-        my %deps;
         
         # insert package names and provides
         foreach my $name (@names) {
@@ -1308,9 +1307,10 @@ sub _process {
         print "[process] $pkg names: $pkgname $provides\n";
         
         # insert package dependencies
-        if ($depends && $makedepends) {
-            $depends = "" unless $depends;
-            $makedepends = "" unless $makedepends;
+        my %deps;
+        $depends = "" unless $depends;
+        $makedepends = "" unless $makedepends;
+        unless ($depends eq '' && $makedepends eq '') {
             foreach my $name (split(/ /, join(' ', $depends, $makedepends))) {
                 $name =~ s/(<|=|>).*//;
                 next if ($name eq "");
