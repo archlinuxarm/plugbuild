@@ -244,6 +244,7 @@ sub _check {
                 undef $self->{$arch}->{timer};
                 AnyEvent->now_update;
                 $self->{$arch}->{timer} = AnyEvent->timer(after => 120, cb => sub { $self->_tier2($arch, $self->{$arch}->{sync}); });
+                $q_svc->enqueue(['mir', 'unhold', $arch]);
             }
             $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring $arch"]);
         }

@@ -114,6 +114,9 @@ sub _cb_publicmsg {
     if ($params[0] && $params[0] eq '#'.$self->{channel} && $params[1] && $params[1] =~ /^\!.*/) {
         my ($trigger, $arg) = split(/ /, $params[1], 2);
         switch ($trigger) {
+            case "!arch" {
+                $q_svc->enqueue(['irc', 'status']);
+            }
             case "!aur" {
                 $q_db->enqueue(['irc', 'aur_check']);
             }

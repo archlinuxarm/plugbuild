@@ -272,7 +272,7 @@ sub push_build {
         # get a package to build in order of listed available architectures for the builder
         foreach my $arch (@{$builder->{available}}) {
             # skip stopped architecture
-            next if ($self->{$arch} eq 'stop');
+            next if ($self->{$arch} ne 'start');
             # calculate available packages based on highmem
             my $total = $builder->{highmem} ? $self->{ready}->{$arch}->{total} : $self->{ready}->{$arch}->{total} - $self->{ready}->{$arch}->{highmem};
             # skip arch if no packages are available
@@ -320,23 +320,37 @@ sub ready {
 sub start {
     my ($self, $arch) = @_;
     
-    if (!$self->{arch}) {
-        $q_irc->enqueue(['svc', 'privmsg', "[start] No such architecture $arch"]);
-        return;
-    }
-    
-    if ($self->{ready}->{$arch}->{total} && $self->{ready}->{$arch}->{total} == 0) {
+    # no such architecture
+    if (!$self->{$arch}) {
+        $q_irc->enqueue(['svc', 'privmsg', "[start] No such architecture $arch"]);    
+        
+    # start when held for mirroring, switch to hold-start
+    } elsif ($self->{$arch} eq 'hold-start' || $self->{$arch} eq 'hold-stop') {
+        $q_irc->enqueue(['svc', 'privmsg', "[start] Holding $arch, will start when hold is released"]);
+        $self->{$arch} = 'hold-start';
+        
+    # start but no packages available for that architecture
+    } elsif ($self->{ready}->{$arch}->{total} && $self->{ready}->{$arch}->{total} == 0) {
         $q_irc->enqueue(['svc', 'privmsg', "[start] No packages available for $arch, not starting"]);
-        return;
-    }
-    
-    if ($self->{arch} eq 'start') {
+        
+    # architecture already started
+    } elsif ($self->{$arch} eq 'start') {
         $q_irc->enqueue(['svc', 'privmsg', "[start] $arch is already started"]);
-        return;
+        
+    # otherwise, start the architecture
+    } else {
+        $q_irc->enqueue(['svc', 'privmsg', "[start] Starting $arch"]);
+        $self->{$arch} = 'start';
     }
-    
-    $q_irc->enqueue(['svc', 'privmsg', "[start] Starting $arch"]);
-    $self->{$arch} = 'start';
+}
+
+# print out status of architectures
+# sender: IRC
+sub status {
+    my ($self) = @_;
+    foreach my $arch (keys %{$self->{arch}}) {
+        $q_irc->enqueue(['svc', 'privmsg', "[status] $arch: " . $self->{$arch}]);
+    }
 }
 
 # mark an architecture as not available to build
@@ -347,24 +361,36 @@ sub stop {
     if ($arch eq 'all') {
         foreach my $a (keys %{$self->{arch}}) {
             next if ($self->{$a} eq 'stop');
-            $self->{$a} = 'stop';
-            $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
+            if ($self->{$a} eq 'hold-start' || $self->{$a} eq 'hold-stop') {
+                $self->{$a} = 'hold-stop';
+                $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will stop when hold is released"]);
+            } else {
+                $self->{$a} = 'stop';
+                $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
+            }
         }
         return;
     }
     
-    if (!$self->{arch}) {
+    # no such architecture
+    if (!$self->{$arch}) {
         $q_irc->enqueue(['svc', 'privmsg', "[stop] No such architecture $arch"]);
-        return;
-    }
-    
-    if ($self->{arch} eq 'stop') {
+        
+    # stop when held for mirroring, switch to hold-stop
+    } elsif ($self->{$arch} eq 'hold-start' || $self->{$arch} eq 'hold-stop') {
+        $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will stop when hold is released"]);
+        $self->{$arch} = 'hold-stop';
+        
+    # architecture already stopped
+    } elsif ($self->{$arch} eq 'stop') {
         $q_irc->enqueue(['svc', 'privmsg', "[stop] $arch is already stopped"]);
-        return;
+        
+    # otherwise, stop the architecture
+    } else {
+        $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
+        $self->{$arch} = 'stop';
     }
     
-    $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
-    $self->{$arch} = 'stop';
 }
 
 # rsync push to farmer complete, set farmer ready
@@ -376,6 +402,26 @@ sub sync {
     
     $farmer->{ready} = 1;
     $handle->push_write(json => {command => 'sync'});
+}
+
+# remove hold on architecture, start or stop depending on status
+# sender: Mirror
+sub unhold {
+    my ($self, $arch) = @_;
+    
+    if ($self->{$arch} eq 'hold-stop') {
+        $q_irc->enqueue(['svc', 'privmsg', "[unhold] Stopping $arch"]);
+        $self->{$arch} = 'stop';
+    } elsif ($self->{$arch} eq 'hold-start') {
+        if ($self->{ready}->{$arch}->{total} && $self->{ready}->{$arch}->{total} == 0) {
+            $q_irc->enqueue(['svc', 'privmsg', "[unhold] No packages available for $arch, stopping"]);
+            $self->{$arch} = 'stop';
+        } else {
+            $q_irc->enqueue(['svc', 'privmsg', "[unhold] Starting $arch"]);
+            $self->{$arch} = 'start';
+            $self->push_build();
+        }
+    }
 }
 
 ################################################################################
@@ -724,7 +770,7 @@ sub _check_complete {
     if ($total && $count == $total) {
         $q_irc->enqueue(['svc', 'privmsg', "[complete] found no package to issue for $arch, mirroring"]);
         $q_mir->enqueue(['svc', 'queue', $arch]) if ($self->{mirroring});
-        $self->{$arch} = 'stop';
+        $self->{$arch} = 'hold-stop';
     }
 }
 
