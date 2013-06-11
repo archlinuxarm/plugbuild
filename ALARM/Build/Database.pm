@@ -761,8 +761,8 @@ sub status {
                 $state = 'building' if ($builder && $state eq 'unbuilt');
                 
                 my $source = ($git?'git':($abs?'abs':'???'));
-                my $status = "[$arch]$highmem$override $name ($pkgver-$pkgrel|$repover-$reporel): repo=>$repo, src=>$source, state=>$state";
-                $status .= ", builder=>$builder" if $state eq 'building';
+                my $status = "[$arch]$highmem$override [$source] $repo/$name ($pkgver-$pkgrel|$repover-$reporel): $state";
+                $status .= " on $builder" if $state eq 'building';
                 
                 my $time;
                 if ($state ne 'building') {
@@ -772,11 +772,13 @@ sub status {
                 }
                 if ($time < 0 || $time > 172800) {
                     # ignore if negative duration or greater than 2 days
-                    $status .= ", time=>???";
+                    $status .= ", build time: ?";
                 } else {
                     my $s; my $duration = (($s=int($time/86400))?$s."d":'') . (($s=int(($time%86400)/3600))?$s."h":'') . (($s=int(($time%3600)/60))?$s."m":'') . (($s = $time%60)?$s."s":'');
-                    $status .= ", time=>$duration";
+                    $status .= ", build time: $duration";
                 }
+                
+                $status .= ", last built: " . scalar(localtime($finish));
                 
                 # generate list of packages blocking this package from building
                 my $names;
