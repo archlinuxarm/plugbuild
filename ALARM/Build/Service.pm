@@ -254,7 +254,7 @@ sub next_pkg {
         $builder->{state} = 'idle';
         undef $builder->{pkgbase};
         undef $builder->{arch};
-        print "SVC: next_pkg: something bad happened, got FAIL for $cn on $builder->{arch}\n";
+        print "SVC: next_pkg: something bad happened, got FAIL for $cn\n";
     }
 }
 

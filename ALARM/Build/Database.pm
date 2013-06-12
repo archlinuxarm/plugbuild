@@ -1269,6 +1269,8 @@ sub _process {
                           undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance);
         print "[process] update abs: $repo/$pkg $pkgver-$pkgrel, git: $is_git, abs: $is_abs skip: $is_skip, highmem: $is_highmem, importance: $importance\n";
         
+        ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
+        
         # new package, different version, update, done = 0
         if (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
             print "[process] $repo/$pkg to $pkgver-$pkgrel\n";
@@ -1292,7 +1294,6 @@ sub _process {
         }
         
         # update dependency tables
-        ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
         $self->{dbh}->do("delete from names where package = ?", undef, $db_id);
         $self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
         print "[process] $pkg: delete from names/deps where package/id = $db_id\n";
