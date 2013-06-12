@@ -363,10 +363,10 @@ sub stop {
             next if ($self->{$a} eq 'stop');
             if ($self->{$a} eq 'hold-start' || $self->{$a} eq 'hold-stop') {
                 $self->{$a} = 'hold-stop';
-                $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will stop when hold is released"]);
+                print "[stop] Holding $arch, will stop when hold is released\n";
             } else {
                 $self->{$a} = 'stop';
-                $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
+                print "[stop] Stopping $arch\n";
             }
         }
         return;

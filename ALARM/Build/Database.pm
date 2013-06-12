@@ -1130,7 +1130,7 @@ sub _process {
                      'alarm'        => 50 );
     
     # halt all architectures
-    #$q_svc->enqueue(['db', 'stop', 'all']);
+    $q_svc->enqueue(['db', 'stop', 'all']);
     print "[process] halting all architectures\n";
     
     # match holds to git updates, delete upstream holds if satisfied in overlay
@@ -1339,7 +1339,7 @@ sub _process {
                 left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
             group by pkg) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
         if ($ready > 0) {
-            #$q_svc->enqueue(['db', 'start', $arch]);
+            $q_svc->enqueue(['db', 'start', $arch]);
             print "[process] starting $arch\n";
         }
     }
@@ -1347,8 +1347,6 @@ sub _process {
     # send ready list to service
     $self->ready_list();
     
-    # push start
-    #$q_svc->enqueue(['db', 'push_build']);
     print "[process] starting available builders\n";
 }
 
