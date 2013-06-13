@@ -475,16 +475,8 @@ sub poll {
         # get changed directories
         if ($type eq 'git') {       # git overlay: repo/package
             @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-2 | sort -u`;
-            #if ($? >> 8) {
-            #    $q_irc->enqueue(['db', 'privmsg', "[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
-            #    next;
-            #}
         } elsif ($type eq 'abs') {  # upstream: package
             @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-3 | sort -u | egrep '.*/(core|extra|community)-(i686|any)'`;
-            #if ($? >> 8) {
-            #    $q_irc->enqueue(['db', 'privmsg', "[poll] Failed to diff source ($id) type: $type, root: $root, error: $!"]);
-            #    next;
-            #}
         } else {                    # skip bad entries
             $q_irc->enqueue(['db', 'privmsg', "[poll] Unknown source ($id) type: $type, root: $root"]);
             next;
@@ -1129,10 +1121,6 @@ sub _process {
                      'aur'          => 40,
                      'alarm'        => 50 );
     
-    # halt all architectures
-    $q_svc->enqueue(['db', 'stop', 'all']);
-    print "[process] halting all architectures\n";
-    
     # match holds to git updates, delete upstream holds if satisfied in overlay
     my $rows = $self->{dbh}->selectall_arrayref("select path, queue.repo, queue.package, queue.pkgver, queue.pkgrel, abs.pkgver, abs.pkgrel, queue.skip, override, group_concat(arch) from queue left outer join architectures on queue.skip & architectures.skip > 0 inner join abs on queue.package = abs.package where ref = 1 and hold = 1 group by queue.package");
     my $hold_total = 0;
@@ -1329,9 +1317,12 @@ sub _process {
         $self->{dbh}->do("delete from queue where path = ?", undef, $path);
     }
     
-    # start architectures without holds
+    # stop architectures with holds/start architectures without holds
     foreach my $arch (keys %{$self->{arch}}) {
-        next if ($self->{skip}->{$arch} & $hold_total);
+        if ($self->{skip}->{$arch} & $hold_total) {
+            $q_svc->enqueue(['db', 'stop', $arch]);
+            next;
+        }
         my ($ready) = $self->{dbh}->selectrow_array("select count(pkg) from
             (select pkg, count(pkg) as cnt, sum(done) as sd from
                 (select abs.package as pkg, max(a2.done) as done from abs
