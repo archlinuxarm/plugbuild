@@ -547,24 +547,6 @@ sub _cb_read {
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
                 }
                 
-                # open file for writing, change read callback to get raw data instead of json
-                #  - arch       => architecture built
-                #  - type       => 'pkg' or 'log'
-                #  - filename   => filename to be uploaded
-                case "open" {
-                    print "   -> $client->{cn} ($data->{arch}: opening $data->{type} file $data->{filename}\n";
-                    my $file;
-                    if ($data->{type} eq "pkg") {
-                        open $file, ">$self->{in_pkg}/$data->{arch}/$data->{filename}";
-                        binmode $file;
-                    } elsif ($data->{type} eq "log") {
-                        open $file, ">$self->{in_log}/$data->{filename}";
-                    }
-                    $client->{file} = $file;
-                    $handle->on_read(sub { $self->_cb_readfile(@_); });
-                    $handle->push_write(json => $data); # ACK via original hash
-                }
-                
                 # connection keepalive ping/pong action
                 case "ping" {
                     $handle->push_write(json => $data);
@@ -672,28 +654,6 @@ sub _cb_read {
             }
         }
     }
-}
-
-# callback for reading file data
-sub _cb_readfile {
-    my ($self, $handle) = @_;
-    
-    $handle->unshift_read(chunk => 4, sub {             # data stream chunks are prefixed by a 4-byte N pack'd length
-        my ($handle, $data) = @_;
-        my $len = unpack "N", $data;
-        if ($len == 0) {                                # zero length = end of stream, switch back to json parsing
-            close $self->{clients}->{$handle}->{file};
-            undef $self->{clients}->{$handle}->{file};
-            $handle->on_read(sub { $handle->push_read(json => sub { $self->_cb_read(@_); }) });
-            $handle->push_write(json => { command => 'uploaded' });
-        } else {
-            $handle->unshift_read(chunk => $len, sub {  # only buffer specified data length
-                my ($handle, $data) = @_;
-                my $file = $self->{clients}->{$handle}->{file};
-                print $file $data if $file;
-            });
-        }
-    });
 }
 
 # callback on whether ssl auth succeeded

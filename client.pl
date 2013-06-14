@@ -30,7 +30,6 @@ my $childpid = 0;
 my %files;
 my $current_filename;
 my $current_fh;
-my $uploading = 0;
 my %stats;
 my @types = ('cpu0_user', 'cpu0_system', 'cpu0_wait', 'cpu1_user', 'cpu1_system', 'cpu1_wait',
              'cpu2_user', 'cpu2_system', 'cpu2_wait', 'cpu3_user', 'cpu3_system', 'cpu3_wait',
@@ -230,15 +229,13 @@ sub cd_read {
 
 # push collectd stats to plugbuild
 sub cd_push {
-    if ($uploading == 0) {
-        while (scalar(keys %stats) > 3) {
-            my $ts = (sort keys %stats)[0];
-            foreach my $type (@types) {
-                $stats{$ts}{$type} = 0 unless defined $stats{$ts}{$type};
-            }
-            $h->push_write(json => { command => 'stats', ts => $ts, data => $stats{$ts} });
-            delete $stats{$ts};
+    while (scalar(keys %stats) > 3) {
+        my $ts = (sort keys %stats)[0];
+        foreach my $type (@types) {
+            $stats{$ts}{$type} = 0 unless defined $stats{$ts}{$type};
         }
+        $h->push_write(json => { command => 'stats', ts => $ts, data => $stats{$ts} });
+        delete $stats{$ts};
     }
 }
 
@@ -250,7 +247,13 @@ sub cb_read {
     
     switch ($data->{command}) {
         case "add" {
-            cb_add($data);
+            if ($data->{response} eq "OK") {
+                delete $files{$current_filename};
+                undef $current_filename;
+            } elsif ($data->{response} eq "FAIL") {
+                print " -> failed to add file, trying again..\n";
+            }
+            cb_add();
         }
         case ["done", "fail"] {
             if ($state->{command} eq $data->{command} && $state->{pkgbase} eq $data->{pkgbase}) {
@@ -278,18 +281,8 @@ sub cb_read {
                 build_start($data->{arch}, $data->{repo}, $data->{pkgbase}, $data->{version});
             }
         }
-        case "open" {
-            $handle->on_drain(sub { cb_upload(@_); });
-            cb_upload();
-        }
         case "prep" {
-            my $filename = $current_filename;
-            $filename =~ s/^\/.*\///;
-            my %reply = ( command   => "open",
-                          type      => "pkg",
-                          arch      => $state->{arch},
-                          filename  => $filename);
-            $handle->push_write(json => \%reply);
+            cb_add();
         }
         case "release" {
             $state->{command} = 'idle';
@@ -305,17 +298,6 @@ sub cb_read {
                 $state->{command} = 'release';
                 $h->push_write(json => $state);
                 $childpid = 0;
-            }
-        }
-        case "uploaded" {
-            if ($state->{command} eq "fail") { # we're done, just uploaded a log
-                $uploading = 0;
-                cd_push();
-                $handle->push_write(json => $state);
-                delete $files{$current_filename};
-                undef $current_filename;
-            } else {
-                cb_add();
             }
         }
     }
@@ -366,7 +348,6 @@ sub build_finish {
     my %reply;
     
     $childpid = 0;
-    $uploading = 1;
     
     # build failed
     if ($status) {
@@ -375,24 +356,18 @@ sub build_finish {
 	
         # check for log file
         my ($logfile) = glob("$workroot/$state->{pkgbase}/$state->{pkgbase}-$state->{version}-$state->{arch}.log");
-        if ($logfile) { # set log file in upload file list
-            $files{$logfile} = 0;
-            $current_filename = $logfile;
-            $logfile =~ s/^\/.*\///;
-            %reply = ( command   => "open",
-                       arch      => $state->{arch},
-                       type      => "log",
-                       filename  => $logfile);
-            $h->push_write(json => \%reply);
-        } else {        # no log, communicate failure
-            $h->push_write(json => $state);
+        if ($logfile) {
+            # send log to plugbuild
+            print " -> Sending log to plugbuild..\n";
+            `rsync -rtl $pkgdest/* $config{build_log}`;
         }
-        
+        # communicate failure
+        $h->push_write(json => $state);        
     }
     
     # build succeeded
     else {
-        # enumerate packages for upload
+        # enumerate packages for adding
         foreach my $filename (glob("$pkgdest/*")) {
             #$filename =~ s/^\/.*\///;
             next if ($filename eq "");
@@ -404,43 +379,30 @@ sub build_finish {
         
         # send new packages to farmer
         if (defined $config{farmer}) {
+            print " -> Uploading to farmer..\n";
             `rsync -rtl $pkgdest/* $config{farmer}/$state->{arch}`;
         }
         
-        # prepare server for upload
+        # send new packages to plugbuild
+        do {
+            print " -> Uploading to plugbuild..\n";
+            `rsync -rtl $pkgdest/* $config{build_pkg}/$state->{arch}`;
+        } while ($? >> 8);
+        
+        # send prep
         $state->{command} = 'prep';
         $h->push_write(json => $state);
     }
 }
 
-sub cb_upload {
-    if ($current_fh) {
-        my ($data, $bytes);
-        $bytes = read $current_fh, $data, 65536;
-        if ($bytes) {
-            $bytes = pack "N", $bytes;
-            $data = $bytes . $data;
-            $h->push_write($data);
-        } else {
-            print "-> sending zero\n";
-            $bytes = pack "N", $bytes;
-            undef $h->{on_drain};   # stop drain event
-            $h->push_write($bytes);
-            close $current_fh;
-            undef $current_fh;
-        }
-    } else {
-        print "-> opening $current_filename\n";
-        open $current_fh, "<$current_filename";
-        binmode $current_fh if ($state->{command} ne 'fail');
-    }
-}
-
 sub cb_add {
-    my $data = shift;
+    # set current file if needed
+    if (!$current_filename && (my ($filename, $md5sum) = each(%files))) {
+        $current_filename = $filename;
+    }
     
-    # add just uploaded file
-    if (!defined $data) {
+    # add package file
+    if ($current_filename) {
         my $filename = $current_filename;
         $filename =~ s/^\/.*\///;
         my $md5sum = $files{$current_filename};
@@ -467,34 +429,10 @@ sub cb_add {
         # communicate reply
         $h->push_write(json => \%reply);
         return;
-    }
-    
-    # delete successfully uploaded file from our list (or not)
-    if ($data->{response} eq "OK") {
-        delete $files{$current_filename};
-        undef $current_filename;
-    } elsif ($data->{response} eq "FAIL") {
-        print " -> failed to upload file, trying again..\n";
-    }
-    
-    # start next file uploading or send done
-    if (!$current_filename && (my ($filename, $md5sum) = each(%files))) {
-        $current_filename = $filename;
-    }
-    if ($current_filename) {
-        my $filename = $current_filename;
-        $filename =~ s/^\/.*\///;
-        my %reply = ( command   => "open",
-                      arch      => $state->{arch},
-                      type      => "pkg",
-                      filename  => $filename);
-        $h->push_write(json => \%reply);
+        
+    # otherwise, send done
     } else {
-        print " -> finished uploading, sending done\n";
-	# send any stats first to count toward this build
-        $uploading = 0;
-	cd_push();
-	# then send done
+        print " -> finished adding, sending done\n";
         $state->{command} = 'done';
         $h->push_write(json => $state);
     }

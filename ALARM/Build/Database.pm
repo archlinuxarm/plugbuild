@@ -219,7 +219,7 @@ sub pkg_add {
     # verify md5sum
     my $md5sum_file = `md5sum $self->{packaging}->{in_pkg}/$arch/$filename`;
     if ($? >> 8) {
-        print "    -> md5sum failed\n";
+        print "    -> md5sum command failed\n";
         $data->{response} = "FAIL";
         $q_svc->enqueue(['db', 'ack', $arch, $builder, $data]);
         return;
