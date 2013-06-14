@@ -38,10 +38,17 @@ foreach my $n (2 .. $#ARGV) {
     $md5sum_file = (split(/ /, $md5sum_file))[0];
     $files{$filename} = $md5sum_file;
     $current_filename = $filename;
+    
+    # send file to farmer
     if (defined $config{farmer}) {
-        # send new packages to farmer
         `rsync -rtl $filename $config{farmer}/$state->{arch}`;
     }
+    
+    # send file to plugbuild
+    do {
+        print " -> Uploading to plugbuild..\n";
+        `rsync -rtl $filename $config{build_pkg}/$state->{arch}`;
+    } while ($? >> 8);
 }
 
 # AnyEvent setup
@@ -145,58 +152,31 @@ sub cb_read {
     
     switch ($data->{command}) {
         case "add" {
-            cb_add($data);
+            if ($data->{response} eq "OK") {
+                delete $files{$current_filename};
+                undef $current_filename;
+            } elsif ($data->{response} eq "FAIL") {
+                print " -> failed to add file, trying again..\n";
+            }
+            cb_add();
         }
         case ["done", "fail"] {
             $condvar->broadcast;
         }
-        case "open" {
-            $handle->on_drain(sub { cb_upload(@_); });
-            cb_upload();
-        }
         case "prep" {
-            my $filename = $current_filename;
-            $filename =~ s/^\/.*\///;
-            my %reply = ( command   => "open",
-                          arch      => $config{primary},
-                          type      => "pkg",
-                          filename  => $filename);
-            $handle->push_write(json => \%reply);
-        }
-        case "uploaded" {
             cb_add();
         }
     }
 }
 
-sub cb_upload {
-    if ($current_fh) {
-        my ($data, $bytes);
-        $bytes = read $current_fh, $data, 65536;
-        if ($bytes) {
-            $bytes = pack "N", $bytes;
-            $data = $bytes . $data;
-            $h->push_write($data);
-        } else {
-            print "-> sending zero\n";
-            $bytes = pack "N", $bytes;
-            undef $h->{on_drain};   # stop drain event
-            $h->push_write($bytes);
-            close $current_fh;
-            undef $current_fh;
-        }
-    } else {
-        print "-> opening $current_filename\n";
-        open $current_fh, "<$current_filename";
-        binmode $current_fh if ($state->{command} ne 'fail');
-    }
-}
-
 sub cb_add {
-    my $data = shift;
+    # set current file if needed
+    if (!$current_filename && (my ($filename, $md5sum) = each(%files))) {
+        $current_filename = $filename;
+    }
     
-    # add just uploaded file
-    if (!defined $data) {
+    # add package file
+    if ($current_filename) {
         my $filename = $current_filename;
         $filename =~ s/^\/.*\///;
         my $md5sum = $files{$current_filename};
@@ -210,7 +190,7 @@ sub cb_add {
         
         # construct message for server
         my %reply = ( command   => "add",
-                      arch      => $config{primary},
+                      arch      => $state->{arch},
                       pkgbase   => $state->{pkgbase},
                       pkgname   => $pkgname,
                       pkgver    => $pkgver,
@@ -223,30 +203,10 @@ sub cb_add {
         # communicate reply
         $h->push_write(json => \%reply);
         return;
-    }
-    
-    # delete successfully uploaded file from our list (or not)
-    if ($data->{response} eq "OK") {
-        delete $files{$current_filename};
-        undef $current_filename;
-    } elsif ($data->{response} eq "FAIL") {
-        print " -> failed to upload file, trying again..\n";
-    }
-    
-    # start next file uploading or send done
-    if (!$current_filename && (my ($filename, $md5sum) = each(%files))) {
-        $current_filename = $filename;
-    }
-    if ($current_filename) {
-        my $filename = $current_filename;
-        $filename =~ s/^\/.*\///;
-        my %reply = ( command   => "open",
-                      arch      => $config{primary},
-                      type      => "pkg",
-                      filename  => $filename);
-        $h->push_write(json => \%reply);
+        
+    # otherwise, send done
     } else {
-        print " -> finished uploading, sending done\n";
+        print " -> finished adding, sending done\n";
         $state->{command} = 'done';
         $h->push_write(json => $state);
     }
