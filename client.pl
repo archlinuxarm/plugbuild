@@ -358,10 +358,11 @@ sub build_finish {
         my ($logfile) = glob("$workroot/$state->{pkgbase}/$state->{pkgbase}-$state->{version}-$state->{arch}.log");
         if ($logfile) {
             # ansi2html the logfile
-            `cat $logfile | ansi2html > $logfile.html`;
+            print " -> converting and gzipping logfile..\n";
+            `cat $logfile | ansi2html | gzip > $logfile.html.gz`;
             # send log to plugbuild
             print " -> Sending log to plugbuild..\n";
-            `rsync -rtl $logfile.html $config{build_log}`;
+            `rsync -rtl $logfile.html.gz $config{build_log}`;
         }
         # communicate failure
         $h->push_write(json => $state);        
