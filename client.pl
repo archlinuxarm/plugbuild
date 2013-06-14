@@ -340,7 +340,7 @@ sub build_start {
     
     # build package, replace perl process with mkarchroot
     print " -> Building package\n";
-    exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -Acsfr --skippgpcheck --nocheck --noprogressbar > $pkgbase-$version-$arch.log 2>&1") or print "couldn't exec: $!";
+    exec("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -Acsfr --skippgpcheck --nocheck --noprogressbar 2>&1 | ansi2html > $pkgbase-$version-$arch.html; test \${PIPESTATUS[0]} -eq 0") or print "couldn't exec: $!";
 }
 
 sub build_finish {
@@ -355,7 +355,7 @@ sub build_finish {
         $state->{command} = 'fail';
 	
         # check for log file
-        my ($logfile) = glob("$workroot/$state->{pkgbase}/$state->{pkgbase}-$state->{version}-$state->{arch}.log");
+        my ($logfile) = glob("$workroot/$state->{pkgbase}/$state->{pkgbase}-$state->{version}-$state->{arch}.html");
         if ($logfile) {
             # send log to plugbuild
             print " -> Sending log to plugbuild..\n";
