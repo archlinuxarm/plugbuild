@@ -13,6 +13,7 @@ use AnyEvent::Handle;
 use AnyEvent::Socket;
 use JSON::XS;
 use Digest::MD5 qw(md5_hex);
+use threads;
 
 my %config = ParseConfig("$Bin/client.conf");
 
@@ -30,6 +31,8 @@ my $childpid = 0;
 my %files;
 my $current_filename;
 my $current_fh;
+my $rsync_thread;
+my $rsync_timer;
 my %stats;
 my @types = ('cpu0_user', 'cpu0_system', 'cpu0_wait', 'cpu1_user', 'cpu1_system', 'cpu1_wait',
              'cpu2_user', 'cpu2_system', 'cpu2_wait', 'cpu3_user', 'cpu3_system', 'cpu3_wait',
@@ -379,22 +382,38 @@ sub build_finish {
             $current_filename = $filename;
         }
         
-        # send new packages to farmer
-        if (defined $config{farmer}) {
-            print " -> Uploading to farmer..\n";
-            `rsync -rtl $pkgdest/* $config{farmer}/$state->{arch}`;
-        }
+        # thread rsync operations to prevent plugbuild timeout
+        $rsync_thread = async {
+            # send new packages to farmer
+            if (defined $config{farmer}) {
+                print " -> Uploading to farmer..\n";
+                `rsync -rtl $pkgdest/* $config{farmer}/$state->{arch}`;
+            }
+            
+            # send new packages to plugbuild
+            do {
+                print " -> Uploading to plugbuild..\n";
+                `rsync -rtl $pkgdest/* $config{build_pkg}/$state->{arch}`;
+            } while ($? >> 8);
+        };
         
-        # send new packages to plugbuild
-        do {
-            print " -> Uploading to plugbuild..\n";
-            `rsync -rtl $pkgdest/* $config{build_pkg}/$state->{arch}`;
-        } while ($? >> 8);
-        
-        # send prep
-        $state->{command} = 'prep';
-        $h->push_write(json => $state);
+        # start timer to check rsync thread completion
+        $rsync_timer = AnyEvent->timer(after => 1, interval => 1, cb => sub { rsync_check(); });
     }
+}
+
+# check if rsync thread is done
+sub rsync_check {
+    # do nothing if it's not done
+    return unless $rsync_thread->is_joinable();
+    
+    # otherwise, stop timer, join thread
+    undef $rsync_timer;
+    $rsync_thread->join();
+    
+    # and send prep
+    $state->{command} = 'prep';
+    $h->push_write(json => $state);
 }
 
 sub cb_add {
