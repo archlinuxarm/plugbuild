@@ -362,7 +362,7 @@ sub pkg_prep {
 # sender: Service
 sub pkg_release {
     my ($self, $arch, $builder, $data) = @_;
-    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.stop = unix_timestamp() where abs.package = ?", undef, $data->{pkgbase});
+    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.finish = unix_timestamp() where abs.package = ?", undef, $data->{pkgbase});
     $self->ready_list();
 }
 
