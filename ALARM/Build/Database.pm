@@ -491,8 +491,8 @@ sub poll {
                 ($repo, $pkg) = split('/', $path, 2);
                 next if (!$pkg);    # not a package update, skip
                 
-                # get commit email
-                $email = `git --work-tree=$root --git-dir=$root/.git log -n1 --pretty="%ae" $path/PKGBUILD`;
+                # get last commit email
+                $email = `git --work-tree=$root --git-dir=$root/.git log -n1 --pretty="%ae" $path`;
                 chomp $email;
                 $email = '' unless is_email($email);
             } elsif ($type eq 'abs') {
@@ -538,8 +538,8 @@ sub poll {
         
         # warn about git overlay being different and flag hold, or warn of override and remove from queue
         if ($type eq 'abs') {
-            my ($db_repo, $db_pkgver, $db_pkgrel, $db_git, $db_skip, $db_override) = $self->{dbh}->selectrow_array("select repo, pkgver, pkgrel, git, skip, override from abs where package = ?", undef, $pkg);
-            if (defined $db_git && $db_git == 1) {
+            my ($db_repo, $db_pkgver, $db_pkgrel, $db_git, $db_skip, $db_override, $db_del) = $self->{dbh}->selectrow_array("select repo, pkgver, pkgrel, git, skip, override, del from abs where package = ?", undef, $pkg);
+            if (defined $db_git && $db_git == 1 && $db_del == 0) {
                 $buildarch = $db_skip;
                 my $db_pkgrel_stripped = $db_pkgrel;    # strip any of our fraction pkgrel numbers
                 $db_pkgrel_stripped =~ s/\.+.*//;
