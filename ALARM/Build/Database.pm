@@ -16,6 +16,7 @@ use HTTP::Tiny;
 use JSON::XS;
 use Scalar::Util;
 use WWW::Shorten::TinyURL;
+use Data::Validate::Email qw(is_email);
 
 # we only ever want one instance connected to the database.
 our $available = Thread::Semaphore->new(1);
@@ -484,18 +485,24 @@ sub poll {
         
         # queue new directory changes (ref=0), or update count reference (ref=2)
         foreach my $path (@paths) {
-            my ($pkg, $repo);
+            my ($pkg, $repo, $email);
             chomp $path;
             if ($type eq 'git') {   # get repo for git overlay packages since it's easy now
                 ($repo, $pkg) = split('/', $path, 2);
                 next if (!$pkg);    # not a package update, skip
+                
+                # get commit email
+                $email = `git --work-tree=$root --git-dir=$root/.git log -n1 --pretty="%ae" $path/PKGBUILD`;
+                chomp $email;
+                $email = '' unless is_email($email);
             } elsif ($type eq 'abs') {
                 ($pkg, $repo) = $path =~ /([^\/]*)\/repos\/(\w+)/;
+                $email = '';        # no email for abs
             }
             print "[poll] inserting $type, path: $root/$path, package: $pkg, repo: $repo\n";
-            $self->{dbh}->do("insert into queue (type, path, package, repo) values (?, ?, ?, ?)
+            $self->{dbh}->do("insert into queue (type, path, package, repo, email) values (?, ?, ?, ?, ?)
                               on duplicate key update ref = 2",
-                              undef, $type, "$root/$path", $pkg, $repo);
+                              undef, $type, "$root/$path", $pkg, $repo, $email);
         }
         
         # update latest HEAD sha in sources
