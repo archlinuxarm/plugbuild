@@ -275,7 +275,7 @@ sub _spawn {
     
     # create threads
     for (; $self->{threads} < $self->{threads_max} && scalar(@{$self->{queue}}); $self->{threads}++) {
-        my $args = pop $self->{queue};
+        my $args = shift $self->{queue};
         my ($thr) = threads->create(\&_rsync, @$args);
         push @{$self->{thread_list}}, $thr;
     }
