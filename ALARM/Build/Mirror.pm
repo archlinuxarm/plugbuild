@@ -188,6 +188,9 @@ sub queue {
     
     # start up mirroring if there are threads available
     $self->_spawn() if ($self->{threads} <= $self->{threads_max});
+    
+    # debug
+    print "Mirror: queue end: $arch count at $self->{$arch}->{count}\n";
 }
 
 # exit mirror thread
@@ -223,6 +226,9 @@ sub sync {
 sub _check {
     my ($self) = @_;
     
+    # debug
+    print "Mirror: check start\n";
+    
     for (my $i = 0; my $thr = @{$self->{thread_list}}[$i]; $i++) {
         next unless $thr->is_joinable();
         my ($id, $ret, $arch, $domain, $sent, $speed, $time) = $thr->join();
@@ -230,7 +236,7 @@ sub _check {
         
         # decrement current rsync thread count, stop timer if zero
         undef $self->{rsync_timer} if (--$self->{threads} == 0);
-        
+                
         $q_irc->enqueue(['mir', 'privmsg', "[mirror] failed to mirror to $domain"]) if ($ret == 1);
         
         # update mirrors table and log
@@ -248,15 +254,24 @@ sub _check {
             }
             $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring $arch"]);
         }
+        
+        # debug
+        print "Mirror: dec $arch to $self->{$arch}->{count}, threads at $self->{threads}\n";
     }
     
     # queue more rsync's if we can
     $self->_spawn() if ($self->{threads} < $self->{threads_max} && scalar(@{$self->{queue}}));
+    
+    # debug
+    print "Mirror: check end\n";
 }
 
 # spawn rsync threads
 sub _spawn {
     my ($self) = @_;
+    
+    # debug
+    print "Mirror: spawn start\n";
     
     # create threads
     for (; $self->{threads} < $self->{threads_max} && scalar(@{$self->{queue}}); $self->{threads}++) {
@@ -264,6 +279,9 @@ sub _spawn {
         my ($thr) = threads->create(\&_rsync, @$args);
         push @{$self->{thread_list}}, $thr;
     }
+    
+    # debug
+    print "Mirror: spawn end: thread count at $self->{threads}\n";
     
     # check rsync thread completion every 5 seconds
     return if defined $self->{rsync_timer};
