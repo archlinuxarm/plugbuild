@@ -1184,7 +1184,7 @@ sub _process {
     # process non-holds into abs and arch tables
     $rows = $self->{dbh}->selectall_arrayref("select * from queue where ref = 1 and hold = 0");
     foreach my $row (@$rows) {
-        my ($type,$path,$ref,$hold,$del,$pkg,$repo,$pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$skip,$noautobuild,$highmem) = @$row;
+        my ($type,$path,$ref,$hold,$del,$pkg,$repo,$pkgname,$provides,$pkgver,$pkgrel,$depends,$makedepends,$skip,$noautobuild,$highmem,$email) = @$row;
         
         # handle deleted package
         if ($del == 1) {
@@ -1259,9 +1259,9 @@ sub _process {
         my $is_highmem = $type eq 'git' ? $highmem : defined $db_highmem ? $db_highmem : 0;
         my $is_done = $noautobuild ? 1 : 0; # noautobuild set, assume built, done = 1
         
-        $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, highmem, del, importance) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-                          on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = ?, abs = ?, skip = ?, highmem = ?, del = 0, importance = ?",
-                          undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance);
+        $self->{dbh}->do("insert into abs (package, repo, pkgname, provides, pkgver, pkgrel, depends, makedepends, git, abs, skip, highmem, del, importance, email) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                          on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, git = ?, abs = ?, skip = ?, highmem = ?, del = 0, importance = ?, email = ?",
+                          undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance, $email, $repo, $pkgname, $provides, $pkgver, $pkgrel, $depends, $makedepends, $is_git, $is_abs, $is_skip, $is_highmem, $importance, $email);
         print "[process] update abs: $repo/$pkg $pkgver-$pkgrel, git: $is_git, abs: $is_abs skip: $is_skip, highmem: $is_highmem, importance: $importance\n";
         
         ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
