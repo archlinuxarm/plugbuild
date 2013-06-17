@@ -273,7 +273,7 @@ sub pkg_add {
 sub pkg_done {
     my ($self, $arch, $package) = @_;
     $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 1, a.fail = 0, a.finish = unix_timestamp() where abs.package = ?", undef, $package);
-    $self->ready_list();
+    $self->ready_list($arch);
 }
 
 # set package fail
@@ -281,7 +281,7 @@ sub pkg_done {
 sub pkg_fail {
     my ($self, $arch, $package) = @_;
     $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 0, a.fail = 1, a.finish = unix_timestamp() where abs.package = ?", undef, $package);
-    $self->ready_list();
+    $self->ready_list($arch);
 }
 
 # toggle highmem status for a package
@@ -639,7 +639,7 @@ sub ready_detail {
 # return hash of number of packages ready to build for each architecture
 # sender: Service, internal
 sub ready_list {
-    my ($self) = @_;
+    my ($self, $from) = @_;
     my %ret;
     
     foreach my $arch (sort keys %{$self->{arch}}) {
@@ -654,7 +654,7 @@ sub ready_list {
         $ret{$arch}{highmem} = $row[1] || 0;
     }
     
-    $q_svc->enqueue(['db', 'ready', \%ret]);
+    $q_svc->enqueue(['db', 'ready', \%ret, $from]);
 }
 
 # rehash stored attributes pulled from database

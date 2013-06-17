@@ -301,12 +301,13 @@ sub quit {
 # store information on number of packages ready to build for each architecture
 # sender: Database
 sub ready {
-    my ($self, $info) = @_;
+    my ($self, $info, $from) = @_;
     
     $self->{ready} = $info;
     
     # check if builders are done if total is 0 and arch is started
     foreach my $arch (keys %{$self->{arch}}) {
+        next if defined $from && $from ne $arch;
         next unless $self->{ready}->{$arch}->{total} == 0;
         $self->_check_complete($arch) if ($self->{$arch} eq 'start');
     }
