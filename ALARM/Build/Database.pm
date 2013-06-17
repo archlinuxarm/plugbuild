@@ -871,11 +871,11 @@ sub update {
                               on duplicate key update repo = ?, pkgname = ?, provides = ?, pkgver = ?, pkgrel = ?, plugrel = ?, depends = ?, makedepends = ?, git = 1, abs = 0, skip = ?, highmem = ?, del = 0, importance = ?",
                               undef, $pkg, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $buildarch, $highmem, $importance, $repo, $pkgname, $provides, $pkgver, $pkgrel, $plugrel, $depends, $makedepends, $buildarch, $highmem, $importance);
             
-            # create work unit package regardless of new version
-            `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
-            
             # new package, different plugrel or version, done = 0
             next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
+            
+            # create work unit package regardless of new version
+            `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$gitroot/$repo" "$pkg" > /dev/null`;
             
             # if new, add to list
             $newlist{$pkg} = 1 if (! defined $db_pkgver);
@@ -930,11 +930,6 @@ sub update {
             # skip a bad source
             next unless (defined $pkgver);
             
-            # create work unit here for non-skipped and new packages, to repackage abs changes without ver-rel bump
-            if ((defined $db_skip && $db_skip > 0) || (! defined $db_skip)) {
-                `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
-            }
-            
             # if new, add to list
             $newlist{$pkg} = 1 if (! defined $db_pkgver);
             
@@ -956,6 +951,7 @@ sub update {
             
             # new package, different version, update, done = 0
             next unless (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel");
+            `tar -zcf "$workroot/$repo-$pkg.tgz" -C "$absroot/$repo" "$pkg" > /dev/null`;
             print "$repo/$pkg to $pkgver-$pkgrel\n";
             
             # update architecture tables
@@ -1009,7 +1005,7 @@ sub update_continue {
     
     # prune abs table of deleted packages, remove repo files
     foreach my $pkg (keys %dellist) {
-        $self->{dbh}->do("update abs set del = 1 where package = ?", undef, $pkg);
+        $self->{dbh}->do("update abs set abs = 0, git = 0, del = 1 where package = ?", undef, $pkg);
         foreach my $arch (keys %{$self->{arch}}) {
             $self->pkg_prep($arch, { pkgbase => $pkg });
         }
