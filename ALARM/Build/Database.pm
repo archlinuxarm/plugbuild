@@ -492,7 +492,7 @@ sub poll {
                 next if (!$pkg);    # not a package update, skip
                 
                 # get last commit email
-                $email = `git --work-tree=$root --git-dir=$root/.git log -n1 --pretty="%ae" $path`;
+                $email = `git --work-tree=$root --git-dir=$root/.git log -n1 --pretty="%ae" $root/$path`;
                 chomp $email;
                 $email = '' unless is_email($email);
             } elsif ($type eq 'abs') {
@@ -522,7 +522,7 @@ sub poll {
             $self->{dbh}->do("update queue set hold = 0, del = 1, ref = 1 where path = ?", undef, $path);
             next;
         }
-        if ($pkg =~ /.*\-lts#/) {  # skip LTS packages, remove from queue
+        if ($pkg =~ /.*\-lts$/) {  # skip LTS packages, remove from queue
             $self->{dbh}->do("delete from queue where path = ?", undef, $path);
             next; 
         }
