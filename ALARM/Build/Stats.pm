@@ -37,33 +37,22 @@ sub Run {
     return if (! $available->down_nb());
     print "Stats Run\n";
     
+    # create email transport
     $self->{transport} = Email::Sender::Transport::SMTP::TLS->new(
         host     => $self->{email}->{host},
         port     => $self->{email}->{port},
         username => $self->{email}->{user},
         password => $self->{email}->{pass} );
-        
-    $self->{condvar} = AnyEvent->condvar;
-    $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->_cb_queue(); });
-    $self->{condvar}->wait;
     
-    print "Stats End\n";
-    return -1;
-}
-
-# callback for thread queue timer
-sub _cb_queue {
-    my ($self) = @_;
-    
-    while (my $msg = $q_stats->dequeue_nb()) {
+    # thread queue loop
+    while (my $msg = $q_stats->dequeue()) {
         my ($from, $order) = @{$msg};
         #print "Stats: got $order from $from\n";
         
         # break out of loop
         if($order eq "quit"){
             $available->down_force(10);
-            $self->{condvar}->broadcast;
-            return;
+            last;
         }
         
         # run named method with provided args
@@ -73,6 +62,9 @@ sub _cb_queue {
             print "Stats: no method: $order\n";
         }
     }
+    
+    print "Stats End\n";
+    return -1;
 }
 
 ################################################################################
@@ -90,14 +82,14 @@ sub email_fail {
     foreach my $arch (sort @{$list}) {
         $body .= "http://archlinuxarm.org:81/builder/in-log/$pkg-$version-$arch.log.html.gz\n";
     }
+    $body .= "\n\nThis is an automated email, do not reply to this email.";
     
     # build message
     my $message = Email::Simple->create(
         header  => [ From    => 'Arch Linux ARM Build System <builder@archlinuxarm.org>',
                      To      => $email,
                      Subject => "Your last commit for $pkg failed to build" ],
-        body    => $body,
-        );
+        body    => $body );
     
     # send message
     sendmail($message, { transport => $self->{transport} }) or print "Stats: Error sending email: $@\n";
