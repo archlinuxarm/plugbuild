@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 #
-# PlugBuild statistics
+# PlugBuild Statistics and Reporting
 #
 
 use strict;
@@ -11,8 +11,10 @@ use Thread::Semaphore;
 use Switch;
 use FindBin qw($Bin);
 use Text::CSV;
-use DBI;
 use RRDTool::OO;
+use Email::Sender::Simple qw(sendmail);
+use Email::Sender::Transport::SMTP::TLS;
+use Email::Simple;
 
 # set timezone for graphs
 $ENV{TZ}="MST";
@@ -35,19 +37,15 @@ sub Run {
     return if (! $available->down_nb());
     print "Stats Run\n";
     
-    my $db = DBI->connect("dbi:mysql:$self->{mysql}", "$self->{user}", "$self->{pass}", {RaiseError => 0, AutoCommit => 1, mysql_auto_reconnect => 1});
-    if (defined $db) {
-        $self->{dbh} = $db;
-    } else {
-        print "Stats: Can't establish MySQL connection, bailing out.\n";
-        return -1;
-    }
-    
+    $self->{transport} = Email::Sender::Transport::SMTP::TLS->new(
+        host     => $self->{email}->{host},
+        port     => $self->{email}->{port},
+        username => $self->{email}->{user},
+        password => $self->{email}->{pass} );
+        
     $self->{condvar} = AnyEvent->condvar;
     $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->_cb_queue(); });
     $self->{condvar}->wait;
-    
-    $db->disconnect;
     
     print "Stats End\n";
     return -1;
@@ -80,6 +78,31 @@ sub _cb_queue {
 ################################################################################
 # Orders
 
+# send email about failed package build
+# sender: Service
+sub email_fail {
+    my ($self, $email, $pkg, $version, $list) = @_;
+    
+    print "Stats: Sending fail email on $pkg to $email\n";
+    
+    # build body
+    my $body = "Please review the build log and submit corrections for the package:\n\n";
+    foreach my $arch (sort @{$list}) {
+        $body .= "http://archlinuxarm.org:81/builder/in-log/$pkg-$version-$arch.log.html.gz\n";
+    }
+    
+    # build message
+    my $message = Email::Simple->create(
+        header  => [ From    => 'Arch Linux ARM Build System <builder@archlinuxarm.org>',
+                     To      => $email,
+                     Subject => "Your last commit for $pkg failed to build" ],
+        body    => $body,
+        );
+    
+    # send message
+    sendmail($message, { transport => $self->{transport} }) or print "Stats: Error sending email: $@\n";
+}
+
 # log RRD data point
 # sender: Service
 sub log_stat {
@@ -91,11 +114,6 @@ sub log_stat {
     # add data point
     $self->{host}->{$cn}->update(time => $ts, values => $data);
     
-    # store package data
-    #if ($pkg ne '') {
-    #    $self->{dbh}->do("insert into stats (package, host, ts, $type) values ((select id from abs where package = ?), (select id from stat_hosts where name = ?), ?, ?)
-    #                      on duplicate key update $type = ?", undef, $pkg, $cn, $ts, $value, $value);
-    #}
 }
 
 ################################################################################

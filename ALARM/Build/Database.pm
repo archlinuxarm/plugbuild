@@ -279,9 +279,32 @@ sub pkg_done {
 # set package fail
 # sender: Service
 sub pkg_fail {
-    my ($self, $arch, $package) = @_;
-    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 0, a.fail = 1, a.finish = unix_timestamp() where abs.package = ?", undef, $package);
+    my ($self, $arch, $pkg) = @_;
+    $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set a.builder = null, a.done = 0, a.fail = 1, a.finish = unix_timestamp() where abs.package = ?", undef, $pkg);
     $self->ready_list($arch);
+    
+    # check if there is an email for the package
+    my ($id, $email, $skip, $pkgver, $pkgrel) = $self->{dbh}->selectrow_array("select id, email, skip, pkgver, pkgrel from abs where package = ?", undef, $pkg);
+    if ($email ne '') {
+        my @list;
+        
+        # check if all architectures are either done or failed
+        foreach my $arch (keys %{$self->{arch}}) {
+            next if ($self->{skip}->{$arch} & $skip) == 0;
+            my ($done, $fail) = $self->{dbh}->selectrow_array("select done, fail from $arch where id = ?", undef, $id);
+            next if $done == 1;
+            if ($fail == 1) {
+                push @list, $arch;
+            } else {
+                return;
+            }
+        }
+        
+        # send out email for failed architectures
+        if (scalar(@list)) {
+            $q_stats->enqueue(['db', 'email_fail', $email, $pkg, "$pkgver-$pkgrel", \@list]);
+        }
+    }
 }
 
 # toggle highmem status for a package

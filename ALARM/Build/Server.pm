@@ -139,7 +139,7 @@ sub Mirror {
 
 sub Stats {
     my $self = shift;
-    return new ALARM::Build::Factory('Stats',$self->{config}->{server}->{database});
+    return new ALARM::Build::Factory('Stats',$self->{config}->{server}->{stats});
 }
 
 
