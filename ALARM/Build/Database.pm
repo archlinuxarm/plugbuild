@@ -1196,7 +1196,7 @@ sub _process {
     foreach my $row (@$rows) {
         my ($pkg, $newrepo, $oldrepo, $path) = @$row;
         
-        print "[process] cross-source repo relocation of $pkg from $oldrepo to $newrepo, dropping $oldrepo entry from queue\n";
+        print "[process] repo relocation of $pkg from $oldrepo to $newrepo, dropping $oldrepo entry from queue\n";
         $self->{dbh}->do("delete from queue where path = ?", undef, $path);
     }
     
@@ -1247,6 +1247,7 @@ sub _process {
                 }
             }
             $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+            `rm -f $workroot/$db_repo-$pkg.tgz`;   # remove work unit
             next;
         }
         
@@ -1269,6 +1270,7 @@ sub _process {
         if (defined $db_repo && $db_repo ne $repo) {
             print "[process] relocating $db_repo/$pkg to $repo\n";
             $self->_pkg_relocate($pkg, $repo);
+            `rm -f $workroot/$db_repo-$pkg.tgz`;    # remove old work unit
         }
         
         # update abs table
