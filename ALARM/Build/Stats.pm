@@ -140,7 +140,7 @@ sub _log_graph_host {
         
         # create graph
         $self->{host}->{$host}->graph(
-            image          => "$self->{packaging}->{imageroot}/$host.png",
+            image          => "$self->{rrd}->{imageroot}/$host.png",
             start          => '-1w',
             width          => 1000,
             height         => 200,
