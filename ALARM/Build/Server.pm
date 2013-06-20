@@ -134,7 +134,7 @@ sub IRC {
 
 sub Mirror {
     my $self = shift;
-    return new ALARM::Build::Factory('Mirror',$self->{config}->{server}->{database});
+    return new ALARM::Build::Factory('Mirror',$self->{config}->{server}->{mirror});
 }
 
 sub Stats {

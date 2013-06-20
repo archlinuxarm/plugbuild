@@ -174,13 +174,13 @@ sub queue {
     $self->{$arch}->{sync} = time();
     
     # update sync file
-    open (MYFILE, '>', "$self->{packaging}->{repo}->{$arch}/sync");
+    open (MYFILE, '>', "$self->{repo}->{$arch}/sync");
     print MYFILE $self->{$arch}->{sync};
     close (MYFILE);
     
     # queue tier 1 mirrors
     my $what = $arch eq 'os' ? 'os' : 'tier';
-    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain, ?, ? from mirrors where $what = 1", undef, $arch, $self->{packaging}->{repo}->{$arch});
+    my $rows = $self->{dbh}->selectall_arrayref("select id, address, domain, ?, ? from mirrors where $what = 1", undef, $arch, $self->{repo}->{$arch});
     foreach my $row (@$rows) {
         push @{$self->{queue}}, $row;
         $self->{$arch}->{count}++;
@@ -209,7 +209,7 @@ sub sync {
     
     print "Mirror: pushing to $address\n";
     foreach my $arch ('armv5', 'armv6', 'armv7') {
-        `rsync -4rlt --delete $self->{packaging}->{repo}->{$arch} $address`;
+        `rsync -4rlt --delete $self->{repo}->{$arch} $address`;
         if ($? >> 8) {
             print "Mirror: failed to push $arch to $address: $!\n";
         } else {
