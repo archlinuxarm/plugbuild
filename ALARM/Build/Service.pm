@@ -548,6 +548,15 @@ sub _cb_read {
                     $q_svc->enqueue(['svc', 'admin', { command => 'update', type => 'builder', builder => { name => $client->{cn}, state => 'idle' } }]);
                 }
                 
+                # insert log file for package
+                #  - pkgbase    => top level package name
+                #  - version    => pkgver-pkgrel string
+                #  - arch       => architecture built
+                case "log" {
+                    print "   -> insert log: $data->{pkgbase}-$data->{version}-$data->{arch}.log.html.gz\n";
+                    $q_db->enqueue(['svc', 'pkg_log', $data->{pkgbase}, $data->{version}, $data->{arch}]);
+                }
+                
                 # connection keepalive ping/pong action
                 case "ping" {
                     $handle->push_write(json => $data);

@@ -345,6 +345,19 @@ sub pkg_info {
     }
 }
 
+# track new log file, delete any old log
+# sender: Service
+sub pkg_log {
+    my ($self, $pkg, $version, $arch) = @_;
+    
+    # delete old log file
+    my ($id, $old) = $self->{dbh}->selectrow_array("select id, log from $arch as a inner join abs on abs.id = a.id where package = ?", undef, $pkg);
+    `rm -f $self->{packaging}->{in_log}/$old` if (defined $old && $old ne '');
+    
+    # insert filename of new log
+    $self->{dbh}->do("update $arch set log = ? where id = ?", undef, "$pkg-$version-$arch.log.html.gz", $id);
+}
+
 # toggle override on package
 # sender: IRC
 sub pkg_override {

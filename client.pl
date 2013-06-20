@@ -349,27 +349,30 @@ sub build_finish {
     
     $childpid = 0;
     
-    # build failed
-    if ($status) {
-        # set fail state
-        $state->{command} = 'fail';
-	
-        # check for log file
-        my ($logfile) = glob("$workroot/$state->{pkgbase}/$state->{pkgbase}-$state->{version}-$state->{arch}.log");
-        if ($logfile) {
-            # ansi2html the logfile
-            print " -> converting and gzipping logfile..\n";
-            `cat $logfile | ansi2html | gzip > $logfile.html.gz`;
-            # send log to plugbuild
-            print " -> Sending log to plugbuild..\n";
-            `rsync -rtl $logfile.html.gz $config{build_log}`;
-        }
-        # communicate failure
-        $h->push_write(json => $state);        
+    # check for log file
+    my ($logfile) = glob("$workroot/$state->{pkgbase}/$state->{pkgbase}-$state->{version}-$state->{arch}.log");
+    if ($logfile) {
+        # ansi2html the logfile
+        print " -> converting and gzipping logfile..\n";
+        `cat $logfile | ansi2html | gzip > $logfile.html.gz`;
+        
+        # send log to plugbuild
+        print " -> Sending log to plugbuild..\n";
+        `rsync -rtl $logfile.html.gz $config{build_log}`;
+        
+        # let plugbuild know of the log
+        $state->{command} = 'log';
+        $h->push_write(json => $state);
     }
     
+    # build failed
+    if ($status) {
+        # send fail
+        $state->{command} = 'fail';
+        $h->push_write(json => $state);
+    
     # build succeeded
-    else {
+    } else {
         # enumerate packages for adding
         foreach my $filename (glob("$pkgdest/*")) {
             next if ($filename eq "");
