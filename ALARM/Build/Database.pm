@@ -349,13 +349,18 @@ sub pkg_info {
 # sender: Service
 sub pkg_log {
     my ($self, $pkg, $version, $arch) = @_;
+    my $new = "$pkg-$version-$arch.log.html.gz";
     
     # delete old log file
     my ($id, $old) = $self->{dbh}->selectrow_array("select abs.id, log from $arch as a inner join abs on abs.id = a.id where package = ?", undef, $pkg);
-    `rm -f $self->{packaging}->{in_log}/$old` if (defined $old && $old ne '');
+    `rm -f $self->{packaging}->{in_log}/$old` if (defined $old && $old ne '' && $old ne $new);
     
     # insert filename of new log
-    $self->{dbh}->do("update $arch set log = ? where id = ?", undef, "$pkg-$version-$arch.log.html.gz", $id) if $version ne '';
+    if ($version ne '') {
+        $self->{dbh}->do("update $arch set log = ? where id = ?", undef, $new, $id);
+    } else {
+        $self->{dbh}->do("update $arch set log = null where id = ?", undef, $id);
+    }
 }
 
 # toggle override on package
