@@ -444,6 +444,7 @@ sub pkg_skip {
         if (!$op) {
             foreach my $arch (keys %{$self->{arch}}) {
                 $self->pkg_prep($arch, { pkgbase => $pkg });
+                $self->{dbh}->do("update $arch set done = 0, fail = 0 where package = ?", undef, $pkg);
             }
         }
     }
