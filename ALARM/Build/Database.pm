@@ -1250,8 +1250,9 @@ sub _process {
                     $self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
                     print "[process] mysql: update abs set abs = 0, del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
-                        $self->pkg_prep($arch, { pkgbase => $pkg });
                         print "[process] deleting $arch/$pkg\n";
+                        $self->pkg_prep($arch, { pkgbase => $pkg });
+                        $self->pkg_log($pkg, '', $arch);
                     }
                 }
             } elsif ($type eq 'git') {
@@ -1265,8 +1266,9 @@ sub _process {
                     $self->{dbh}->do("delete from deps where id = ?", undef, $db_id);
                     print "[process] mysql: update abs set git = 0, abs = 0, del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
-                        $self->pkg_prep($arch, { pkgbase => $pkg });
                         print "[process] deleting $arch/$pkg\n";
+                        $self->pkg_prep($arch, { pkgbase => $pkg });
+                        $self->pkg_log($pkg, '', $arch);
                     }
                 }
             }
