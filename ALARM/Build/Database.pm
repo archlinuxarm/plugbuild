@@ -355,7 +355,7 @@ sub pkg_log {
     `rm -f $self->{packaging}->{in_log}/$old` if (defined $old && $old ne '');
     
     # insert filename of new log
-    $self->{dbh}->do("update $arch set log = ? where id = ?", undef, "$pkg-$version-$arch.log.html.gz", $id);
+    $self->{dbh}->do("update $arch set log = ? where id = ?", undef, "$pkg-$version-$arch.log.html.gz", $id) if $version ne '';
 }
 
 # toggle override on package
@@ -436,6 +436,14 @@ sub pkg_select {
 # sender: IRC
 sub pkg_skip {
     my ($self, $pkg, $op) = @_;
+    
+    # don't allow modification of overlay packages
+    my ($git) = $self->{dbh}->selectrow_array("select git from abs where package = ?", undef, $pkg);
+    if ($git == 1) {
+        $q_irc->enqueue(['db', 'privmsg', "[skip] $pkg is sourced from git, adjust buildarch value to make changes."]);
+        return;
+    }
+
     my $rows = $self->{dbh}->do("update abs set skip = $op where package = ?", undef, $pkg);
     if ($rows < 1) {
         $q_irc->enqueue(['db', 'privmsg', "Couldn't modify $pkg, check the name."]);
@@ -444,7 +452,8 @@ sub pkg_skip {
         if (!$op) {
             foreach my $arch (keys %{$self->{arch}}) {
                 $self->pkg_prep($arch, { pkgbase => $pkg });
-                $self->{dbh}->do("update $arch set done = 0, fail = 0 where package = ?", undef, $pkg);
+                $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set done = 0, fail = 0 where package = ?", undef, $pkg);
+                $self->pkg_log($pkg, '', $arch);
             }
         }
     }
@@ -613,6 +622,7 @@ sub prune {
     foreach my $arch (keys %{$self->{arch}}) {
         $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set done = 0, fail = 0 where package = ?", undef, $pkg);
         $self->pkg_prep($arch, { pkgbase => $pkg });
+        $self->pkg_log($pkg, '', $arch);
     }
 }
 
