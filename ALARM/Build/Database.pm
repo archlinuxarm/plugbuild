@@ -351,7 +351,7 @@ sub pkg_log {
     my ($self, $pkg, $version, $arch) = @_;
     
     # delete old log file
-    my ($id, $old) = $self->{dbh}->selectrow_array("select id, log from $arch as a inner join abs on abs.id = a.id where package = ?", undef, $pkg);
+    my ($id, $old) = $self->{dbh}->selectrow_array("select abs.id, log from $arch as a inner join abs on abs.id = a.id where package = ?", undef, $pkg);
     `rm -f $self->{packaging}->{in_log}/$old` if (defined $old && $old ne '');
     
     # insert filename of new log
