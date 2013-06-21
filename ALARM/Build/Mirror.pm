@@ -231,9 +231,11 @@ sub _check {
         # debug
         print "Mirror: joining..\n";
         my ($id, $ret, $arch, $domain, $sent, $speed, $time) = $thr->join();
+        print "Mirror: splicing..\n";
         splice(@{$self->{thread_list}}, $i, 1);
         
         # decrement current rsync thread count, stop timer if zero
+        print "Mirror: dicing..\n";
         undef $self->{rsync_timer} if (--$self->{threads} == 0);
                 
         $q_irc->enqueue(['mir', 'privmsg', "[mirror] failed to mirror to $domain"]) if ($ret == 1);
