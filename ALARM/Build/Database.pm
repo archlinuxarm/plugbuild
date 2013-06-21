@@ -1283,7 +1283,7 @@ sub _process {
         }
         
         # update abs and arch tables if newer
-        my ($db_id, $db_repo, $db_pkgver, $db_pkgrel, $db_git, $db_abs, $db_skip, $db_highmem, $db_importance) = $self->{dbh}->selectrow_array("select id, repo, pkgver, pkgrel, git, abs, skip, highmem, importance from abs where package = ?", undef, $pkg);
+        my ($db_id, $db_repo, $db_pkgver, $db_pkgrel, $db_git, $db_abs, $db_skip, $db_highmem, $db_importance, $db_del) = $self->{dbh}->selectrow_array("select id, repo, pkgver, pkgrel, git, abs, skip, highmem, importance, del from abs where package = ?", undef, $pkg);
         my $importance = $priority{$repo};  # set importance
         
         # create work unit
@@ -1318,8 +1318,8 @@ sub _process {
         
         ($db_id) = $self->{dbh}->selectrow_array("select id from abs where package = ?", undef, $pkg);
         
-        # new package, different version, update, done = 0
-        if (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel") {
+        # new package, different version, previously deleted, update, done = 0
+        if (! defined $db_pkgver || "$pkgver-$pkgrel" ne "$db_pkgver-$db_pkgrel" || $db_del == 1) {
             print "[process] $repo/$pkg to $pkgver-$pkgrel\n";
             
             # update architecture tables
