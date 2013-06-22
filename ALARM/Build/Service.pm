@@ -739,8 +739,10 @@ sub _check_complete {
     }
     if ($total && $count == $total) {
         $q_irc->enqueue(['svc', 'privmsg', "[complete] found no package to issue for $arch, mirroring"]);
-        $q_mir->enqueue(['svc', 'queue', $arch]) if ($self->{mirroring});
-        $self->{$arch} = 'hold-stop';
+        if ($self->{mirroring}) {
+            $q_mir->enqueue(['svc', 'queue', $arch]);
+            $self->{$arch} = 'hold-stop';
+        }
     }
 }
 
