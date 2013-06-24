@@ -269,7 +269,7 @@ sub _spawn {
     } else {
         foreach my $thread (keys %{$self->{threads}}) {
             next if $self->{threads}->{$thread}->{active};          # only want inactive threads
-            last if scalar(@{$self->{queue}});                      # and only if there are queue items
+            last unless scalar(@{$self->{queue}});                  # and only if there are queue items
             $self->{threads}->{$thread}->{active} = 1;              # mark thread as active
             my $args = shift $self->{queue};
             $self->{threads}->{$thread}->{queue}->enqueue($args);   # send mirror info to worker thread queue
@@ -298,7 +298,7 @@ sub _rsync {
         my ($sent)  = ($output =~ /sent (\d+) bytes/);
         my ($speed) = ($output =~ /(\d+\.\d+) bytes\/sec/);
         
-        $write->enqueue(['done', $name, $id, $ret, $arch, $domain, $sent, $speed, $time]);
+        $write->enqueue(['worker', 'done', $name, $id, $ret, $arch, $domain, $sent, $speed, $time]);
     }
 }
 
