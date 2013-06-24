@@ -51,7 +51,7 @@ sub Run {
     # thread queue loop
     while (my $msg = $q_mir->dequeue) {
         my ($from,$order) = @{$msg};
-        print "Mirror: got $order from $from\n";
+        print "Mirror: got $order from $from\n" if $from ne 'worker';
         
         # break out of loop
         if($order eq "quit"){
@@ -80,9 +80,6 @@ sub Run {
 sub done {
     my ($self, $worker, $id, $ret, $arch, $domain, $sent, $speed, $time) = @_;
     
-    # debug
-    print "Mirror: $worker completed sync of $arch to $domain\n";
-    
     # mark worker as inactive
     $self->{threads}->{$worker}->{active} = 0;
     
@@ -103,9 +100,6 @@ sub done {
         }
         $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring $arch"]);
     }
-    
-    # debug
-    print "Mirror: dec $arch to $self->{$arch}->{count}\n";
     
     # issue more work for this worker
     $self->_spawn($worker);
@@ -285,9 +279,6 @@ sub _rsync {
         my ($id, $address, $domain, $arch, $repo) = @{$msg};
         my $ret = 0;
         my $time = time();
-        
-        # debug
-        print "Mirror ($name): syncing $arch to $domain\n";
         
         # run rsync
         my $output = qx{rsync -rtl --delete --stats $repo $address};
