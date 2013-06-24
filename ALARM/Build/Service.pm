@@ -742,6 +742,8 @@ sub _check_complete {
         if ($self->{mirroring}) {
             $q_mir->enqueue(['svc', 'queue', $arch]);
             $self->{$arch} = 'hold-stop';
+        } else {
+            $self->{$arch} = 'stop';
         }
     }
 }
