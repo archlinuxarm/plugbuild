@@ -92,10 +92,8 @@ sub done {
     # decrement and check number of mirrors left to rsync for this architecture
     if (--$self->{$arch}->{count} == 0) {
         if ($arch ne 'os') {
-            # set one-shot timer to check Tier 2 mirrors after 120 seconds
-            undef $self->{$arch}->{timer};
-            AnyEvent->now_update;
-            $self->{$arch}->{timer} = AnyEvent->timer(after => 120, cb => sub { $self->_tier2($arch, $self->{$arch}->{sync}); });
+            # check Tier 2 mirrors
+            $self->_tier2($arch, $self->{$arch}->{sync});
             $q_svc->enqueue(['mir', 'unhold', $arch]);
         }
         $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring $arch"]);
