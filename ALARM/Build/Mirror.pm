@@ -39,12 +39,33 @@ sub Run {
         return -1;
     }
     
-    $self->{threads} = 0;       # current number of rsync threads
     $self->{threads_max} = 5;   # maximum number of rsync threads
     
-    $self->{condvar} = AnyEvent->condvar;
-    $self->{timer} = AnyEvent->timer(interval => .5, cb => sub { $self->_cb_queue(); });
-    $self->{condvar}->wait;
+    # spawn worker threads
+    for (my $i = 0; $i < $self->{threads_max}; $i++) {
+        $self->{threads}->{"rs$i"}->{queue} = Thread::Queue->new();
+        $self->{threads}->{"rs$i"}->{thread} = threads->create(\&_rsync, "rs$i", $q_mir, $self->{threads}->{"rs$i"}->{queue});
+        $self->{threads}->{"rs$i"}->{active} = 0;
+    }
+    
+    # thread queue loop
+    while (my $msg = $q_mir->dequeue) {
+        my ($from,$order) = @{$msg};
+        print "Mirror: got $order from $from\n";
+        
+        # break out of loop
+        if($order eq "quit"){
+            $available->down_force(10);
+            last;
+        }
+        
+        # run named method with provided args
+        if ($self->can($order)) {
+            $self->$order(@{$msg}[2..$#{$msg}]);
+        } else {
+            print "Mirror: no method: $order\n";
+        }
+    }
     
     $db->disconnect;
     
@@ -52,29 +73,43 @@ sub Run {
 }
 
 ################################################################################
-# AnyEvent Callbacks
-
-# callback for thread queue timer
-sub _cb_queue {
-    my ($self) = @_;
-    
-    # dequeue next message
-    my $msg = $q_mir->dequeue_nb();
-    return unless $msg;
-    
-    my ($from, $order) = @{$msg};
-    print "Mirror: got $order from $from\n";
-    
-    # run named method with provided args
-    if ($self->can($order)) {
-        $self->$order(@{$msg}[2..$#{$msg}]);
-    } else {
-        print "Mirror: no method: $order\n";
-    }
-}
-
-################################################################################
 # Orders
+
+# rsync thread completion
+# sender: Mirror worker threads
+sub done {
+    my ($self, $worker, $id, $ret, $arch, $domain, $sent, $speed, $time) = @_;
+    
+    # debug
+    print "Mirror: $worker completed sync of $arch to $domain\n";
+    
+    # mark worker as inactive
+    $self->{threads}->{$worker}->{active} = 0;
+    
+    $q_irc->enqueue(['mir', 'privmsg', "[mirror] failed to mirror to $domain"]) if ($ret == 1);
+    
+    # update mirrors table and log
+    $self->{dbh}->do("update mirrors set active = ? where id = ?", undef, $ret ? 0 : 1, $id);
+    $self->{dbh}->do("insert into mirror_log (id, sent, speed, time, fail) values (?, ?, ?, ?, ?)", undef, $id, $sent, $speed, $time, $ret);
+    
+    # decrement and check number of mirrors left to rsync for this architecture
+    if (--$self->{$arch}->{count} == 0) {
+        if ($arch ne 'os') {
+            # set one-shot timer to check Tier 2 mirrors after 120 seconds
+            undef $self->{$arch}->{timer};
+            AnyEvent->now_update;
+            $self->{$arch}->{timer} = AnyEvent->timer(after => 120, cb => sub { $self->_tier2($arch, $self->{$arch}->{sync}); });
+            $q_svc->enqueue(['mir', 'unhold', $arch]);
+        }
+        $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring $arch"]);
+    }
+    
+    # debug
+    print "Mirror: dec $arch to $self->{$arch}->{count}\n";
+    
+    # issue more work for this worker
+    $self->_spawn($worker);
+}
 
 # refresh the GeoIP database
 # sender: IRC
@@ -186,8 +221,8 @@ sub queue {
         $self->{$arch}->{count}++;
     }
     
-    # start up mirroring if there are threads available
-    $self->_spawn() if ($self->{threads} <= $self->{threads_max});
+    # issue work to threads
+    $self->_spawn();
 }
 
 # exit mirror thread
@@ -219,86 +254,52 @@ sub sync {
 ################################################################################
 # Internal
 
-# rsync thread completion check
-sub _check {
-    my ($self) = @_;
-    
-    for (my $i = 0; my $thr = @{$self->{thread_list}}[$i];) {
-        unless ($thr->is_joinable()) {
-            $i++;
-            next;
-        }
-        # debug
-        print "Mirror: joining..\n";
-        my ($id, $ret, $arch, $domain, $sent, $speed, $time) = $thr->join();
-        print "Mirror: splicing..\n";
-        splice(@{$self->{thread_list}}, $i, 1);
-        
-        # decrement current rsync thread count, stop timer if zero
-        print "Mirror: dicing..\n";
-        undef $self->{rsync_timer} if (--$self->{threads} == 0);
-                
-        $q_irc->enqueue(['mir', 'privmsg', "[mirror] failed to mirror to $domain"]) if ($ret == 1);
-        
-        # debug
-        print "Mirror: updating sql..\n";
-        
-        # update mirrors table and log
-        $self->{dbh}->do("update mirrors set active = ? where id = ?", undef, $ret ? 0 : 1, $id);
-        $self->{dbh}->do("insert into mirror_log (id, sent, speed, time, fail) values (?, ?, ?, ?, ?)", undef, $id, $sent, $speed, $time, $ret);
-        
-        # decrement and check number of mirrors left to rsync for this architecture
-        if (--$self->{$arch}->{count} == 0) {
-            if ($arch ne 'os') {
-                # set one-shot timer to check Tier 2 mirrors after 120 seconds
-                undef $self->{$arch}->{timer};
-                AnyEvent->now_update;
-                $self->{$arch}->{timer} = AnyEvent->timer(after => 120, cb => sub { $self->_tier2($arch, $self->{$arch}->{sync}); });
-                $q_svc->enqueue(['mir', 'unhold', $arch]);
-            }
-            $q_irc->enqueue(['mir', 'privmsg', "[mirror] finished mirroring $arch"]);
-        }
-        
-        # debug
-        print "Mirror: dec $arch to $self->{$arch}->{count}, threads at $self->{threads}\n";
-    }
-    
-    # queue more rsync's if we can
-    $self->_spawn() if ($self->{threads} < $self->{threads_max} && scalar(@{$self->{queue}}));
-}
-
-# spawn rsync threads
+# issue work to rsync threads
 sub _spawn {
-    my ($self) = @_;
+    my ($self, $worker) = @_;
     
-    # create threads
-    for (; $self->{threads} < $self->{threads_max} && scalar(@{$self->{queue}}); $self->{threads}++) {
+    # send new item to specific worker
+    if ($worker) {
+        return unless $self->{threads}->{$worker}->{active} == 0 && scalar(@{$self->{queue}});
         my $args = shift $self->{queue};
-        my ($thr) = threads->create(\&_rsync, @$args);
-        push @{$self->{thread_list}}, $thr;
+        $self->{threads}->{$worker}->{active} = 1;
+        $self->{threads}->{$worker}->{queue}->enqueue($args);
+        
+    # send new item to any available worker
+    } else {
+        foreach my $thread (keys %{$self->{threads}}) {
+            next if $thread->{active};              # only want inactive threads
+            last if scalar(@{$self->{queue}});      # and only if there are queue items
+            $thread->{active} = 1;                  # mark thread as active
+            my $args = shift $self->{queue};
+            $thread->{queue}->enqueue($args);       # send mirror info to worker thread queue
+        }
     }
-    
-    # check rsync thread completion every 5 seconds
-    return if defined $self->{rsync_timer};
-    $self->{rsync_timer} = AnyEvent->timer(after => 5, interval => 5, cb => sub { $self->_check(); });
 }
 
-# rsync thread subroutine
+# rsync worker thread subroutine
 sub _rsync {
-    my ($id, $address, $domain, $arch, $repo) = @_;
-    my $ret = 0;
-    my $time = time();
+    my ($name, $write, $read) = @_;
     
-    # run rsync
-    my $output = qx{rsync -rtl --delete --stats $repo $address};
-    $ret = 1 if ($? >> 8);
-    
-    # get stats from output
-    $time = time() - $time;
-    my ($sent)  = ($output =~ /sent (\d+) bytes/);
-    my ($speed) = ($output =~ /(\d+\.\d+) bytes\/sec/);
-    
-    return ($id, $ret, $arch, $domain, $sent, $speed, $time);
+    while (my $msg = $read->dequeue) {
+        my ($id, $address, $domain, $arch, $repo) = @{$msg};
+        my $ret = 0;
+        my $time = time();
+        
+        # debug
+        print "Mirror ($name): syncing $arch to $domain\n";
+        
+        # run rsync
+        my $output = qx{rsync -rtl --delete --stats $repo $address};
+        $ret = 1 if ($? >> 8);
+        
+        # get stats from output
+        $time = time() - $time;
+        my ($sent)  = ($output =~ /sent (\d+) bytes/);
+        my ($speed) = ($output =~ /(\d+\.\d+) bytes\/sec/);
+        
+        $write->enqueue(['done', $name, $id, $ret, $arch, $domain, $sent, $speed, $time]);
+    }
 }
 
 # check Tier 2 mirrors for synchronization
