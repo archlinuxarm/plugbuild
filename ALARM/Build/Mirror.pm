@@ -268,11 +268,11 @@ sub _spawn {
     # send new item to any available worker
     } else {
         foreach my $thread (keys %{$self->{threads}}) {
-            next if $thread->{active};              # only want inactive threads
-            last if scalar(@{$self->{queue}});      # and only if there are queue items
-            $thread->{active} = 1;                  # mark thread as active
+            next if $self->{threads}->{$thread}->{active};          # only want inactive threads
+            last if scalar(@{$self->{queue}});                      # and only if there are queue items
+            $self->{threads}->{$thread}->{active} = 1;              # mark thread as active
             my $args = shift $self->{queue};
-            $thread->{queue}->enqueue($args);       # send mirror info to worker thread queue
+            $self->{threads}->{$thread}->{queue}->enqueue($args);   # send mirror info to worker thread queue
         }
     }
 }
