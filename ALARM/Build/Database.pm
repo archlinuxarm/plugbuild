@@ -1256,12 +1256,14 @@ sub _process {
                     print "[process] mysql: update abs set abs = 0, del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
                         print "[process] deleting $arch/$pkg\n";
+                        $self->{dbh}->do("update $arch as a inner join abs on abs.id = a.id set done = 0, fail = 0 where package = ?", undef, $pkg);
                         $self->pkg_prep($arch, { pkgbase => $pkg });
                         $self->pkg_log($pkg, '', $arch);
                     }
                 }
             } elsif ($type eq 'git') {
                 if ($db_abs == 1) {         # switch to abs, no rebuilding but remove any holds to release upstream replacement
+                    $q_irc->enqueue(['db', 'privmsg', "[process] Removed $repo/$pkg from overlay, using upstream version"]);
                     $self->{dbh}->do("update abs set git = 0 where package = ?", undef, $pkg);
                     print "[process] mysql: update abs set git = 0 where package = $pkg\n";
                 } else {                    # otherwise, trash the package
@@ -1272,6 +1274,7 @@ sub _process {
                     print "[process] mysql: update abs set git = 0, abs = 0, del = 1 where package = $pkg, delete from names/deps where id = $db_id\n";
                     foreach my $arch (keys %{$self->{arch}}) {
                         print "[process] deleting $arch/$pkg\n";
+                        $self->{dbh}->do("update $arch as a inner join abs on abs.id = a.id set done = 0, fail = 0 where package = ?", undef, $pkg);
                         $self->pkg_prep($arch, { pkgbase => $pkg });
                         $self->pkg_log($pkg, '', $arch);
                     }
