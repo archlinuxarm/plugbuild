@@ -82,7 +82,7 @@ sub email_fail {
     foreach my $arch (sort @{$list}) {
         $body .= "http://archlinuxarm.org:81/builder/in-log/$pkg-$version-$arch.log.html.gz\n";
     }
-    $body .= "\n\nThis is an automated email, do not reply to this email.";
+    $body .= "\n\nThis is an automated email, do not reply.";
     
     # build message
     my $message = Email::Simple->create(
