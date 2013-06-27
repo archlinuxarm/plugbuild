@@ -460,7 +460,7 @@ sub hash_script {
 sub maintenance {
     # update chroots, clean out caches
     foreach my $arch (@{$config{available}}) {
-        system("mkarchroot -uc $cacheroot/$arch $config{$arch}{chroot}/root");
+        system("arch-nspawn -c $cacheroot/$arch $config{$arch}{chroot}/root pacman -Syyu --noconfirm");
         system("rm -f $cacheroot/$arch/*");
     }
     
