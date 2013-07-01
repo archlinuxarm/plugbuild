@@ -462,6 +462,9 @@ sub pkg_skip {
             }
         }
     }
+    
+    # send updated list to service
+    $self->ready_list();
 }
 
 # unfail package or all
