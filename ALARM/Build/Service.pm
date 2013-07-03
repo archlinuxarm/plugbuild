@@ -336,7 +336,7 @@ sub start {
         
     # architecture already started
     } elsif ($self->{$arch} eq 'start') {
-        $q_irc->enqueue(['svc', 'privmsg', "[start] $arch is already started"]);
+        return;
         
     # otherwise, start the architecture
     } else {
