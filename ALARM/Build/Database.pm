@@ -1330,7 +1330,6 @@ sub _process {
             
             # update architecture tables
             foreach my $arch (keys %{$self->{arch}}) {
-                next unless ($self->{skip}->{$arch} & $is_skip);    # don't update skipped architectures
                 $self->{dbh}->do("insert into $arch (id, done, fail) values (?, ?, 0) on duplicate key update done = ?, fail = 0", undef, $db_id, $is_done, $is_done);
                 print "[process] setting done = $is_done, fail = 0 on $arch table\n";
             }
