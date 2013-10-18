@@ -279,7 +279,7 @@ sub _rsync {
         my $time = time();
         
         # run rsync
-        my $output = qx{rsync -rtl --delete --stats --timeout=30 $repo $address};
+        my $output = qx{rsync -rtl --delete --stats --timeout=120 $repo $address};
         $ret = 1 if ($? >> 8);
         
         # get stats from output
