@@ -50,6 +50,9 @@ my $timer_retry;
 my $timer_idle;
 my $server = tcp_server "127.0.0.1", 80, sub { cd_accept(@_); };
 
+# set powersave governor
+system("cpufreq-set -rg powersave");
+
 # main event loop
 $state->{command} = 'idle';
 $timer_idle = AnyEvent->timer(after => 1800, interval => 21600, cb => sub { maintenance(); });
@@ -65,6 +68,10 @@ $h->destroy;
 # SIGINT catcher
 sub bailout {
     print "\n\nCaught SIGINT, shutting down..\n";
+    
+    # set performance governor
+    system("cpufreq-set -rg performance");
+    
     if ($state->{command} && $state->{command} ne 'idle') {
         undef $child;
         kill 'TERM', -$childpid if ($childpid);
@@ -260,6 +267,7 @@ sub cb_read {
                 print "ACK: $state->{command}, setting idle\n";
                 $state->{command} = 'idle';
                 $timer_idle = AnyEvent->timer(after => 1800, interval => 21600, cb => sub { maintenance(); });
+                system("cpufreq-set -rg powersave");                # set powersave governor for idle
             }
         }
         case "maint" {
@@ -272,6 +280,7 @@ sub cb_read {
                 $data->{command} = 'release';
                 $h->push_write(json => $data);
             } else {
+                system("cpufreq-set -rg performance");              # set performance governor for building
                 $state = $data;
                 foreach my $file (keys %files) {                    # ensure there aren't lingering files
                     delete $files{$file};
@@ -458,6 +467,9 @@ sub hash_script {
 
 # idle maintenance routine
 sub maintenance {
+    # set performance governor
+    system("cpufreq-set -rg performance");
+    
     # update chroots, clean out caches
     foreach my $arch (@{$config{available}}) {
         system("arch-nspawn -c $cacheroot/$arch $config{$arch}{chroot}/root pacman -Syyu --noconfirm");
@@ -487,4 +499,7 @@ sub maintenance {
             }
         }
     }
+    
+    # set powersave governor
+    system("cpufreq-set -rg powersave");
 }
