@@ -130,7 +130,7 @@ sub cb_read {
     switch ($data->{command}) {
         # repo-add package file
         case "add" {
-            system("repo-add -q $config{$arch}/$repo/$repo.db.tar.gz $config{$arch}/$repo/$arg");
+            system("repo-add $config{$arch}/$repo/$repo.db.tar.gz $config{$arch}/$repo/$arg");
         }
         
         # delete package file and signature from filesystem
@@ -179,7 +179,7 @@ sub cb_read {
         
         # repo-remove package
         case "remove" {
-            system("repo-remove -q $config{$arch}/$repo/$repo.db.tar.gz $arg");
+            system("repo-remove $config{$arch}/$repo/$repo.db.tar.gz $arg");
         }
         
         # sync ACK
