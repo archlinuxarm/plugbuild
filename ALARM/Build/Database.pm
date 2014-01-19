@@ -233,10 +233,11 @@ sub pkg_add {
         return;
     }
     
-    # move file, repo-add it
+    # move file and signature, repo-add it
     print "   -> adding $arch/$repo/$pkgname ($filename)..\n";
     $q_svc->enqueue(['db', 'farm', 'insert', $arch, $repo, $filename]);
     system("mv -f $self->{packaging}->{in_pkg}/$arch/$filename $self->{packaging}->{repo}->{$arch}/$repo");
+    system("mv -f $self->{packaging}->{in_pkg}/$arch/$filename.sig $self->{packaging}->{repo}->{$arch}/$repo");
     if ($? >> 8) {
         print "    -> move failed\n";
         $data->{response} = "FAIL";
@@ -390,9 +391,10 @@ sub pkg_prep {
         system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.db.tar.gz $pkgname");
         system("$self->{packaging}->{archbin}/repo-remove -q $self->{packaging}->{repo}->{$arch}/$repo/$repo.files.tar.gz $pkgname");
         
-        # remove file
+        # remove file and signature
         $q_svc->enqueue(['db', 'farm', 'delete', $arch, $repo, $filename]);
         system("rm -f $self->{packaging}->{repo}->{$arch}/$repo/$filename");
+        system("rm -f $self->{packaging}->{repo}->{$arch}/$repo/$filename.sig");
     }
     
     # flag del on previous entries
@@ -1152,6 +1154,7 @@ sub _pkg_relocate {
         # move file
         $q_svc->enqueue(['db', 'farm', 'move', $arch, [$oldrepo, $newrepo], $filename]);
         system("mv $self->{packaging}->{repo}->{$arch}/$oldrepo/$filename $self->{packaging}->{repo}->{$arch}/$newrepo/$filename");
+        system("mv $self->{packaging}->{repo}->{$arch}/$oldrepo/$filename.sig $self->{packaging}->{repo}->{$arch}/$newrepo/$filename.sig");
         
         # add to new repo.db
         $q_svc->enqueue(['db', 'farm', 'add', $arch, $newrepo, $filename]);

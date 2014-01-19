@@ -389,6 +389,9 @@ sub build_finish {
             $md5sum_file = (split(/ /, $md5sum_file))[0];
             $files{$filename} = $md5sum_file;
             $current_filename = $filename;
+            
+            # generate signature
+            `gpg --detach-sign $filename`;
         }
         
         # send new packages to farmer
@@ -424,7 +427,7 @@ sub cb_add {
         $filename =~ s/^\/.*\///;
         my $md5sum = $files{$current_filename};
         # query file for extra information
-        my $info = `tar -xOf $current_filename .PKGINFO 2>&1`;
+        my $info = `tar --occurrence=1 -xOf $current_filename .PKGINFO 2>&1`;
         my ($pkgname) = $info =~ m/pkgname = (.*)\n?/;
         my ($pkgver) = $info =~ m/pkgver = (.*)\n?/;
         my $pkgrel;

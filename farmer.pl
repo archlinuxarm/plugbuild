@@ -133,20 +133,23 @@ sub cb_read {
             system("repo-add -q $config{$arch}/$repo/$repo.db.tar.gz $config{$arch}/$repo/$arg");
         }
         
-        # delete package file from filesystem
+        # delete package file and signature from filesystem
         case "delete" {
             system("rm -f $config{$arch}/$repo/$arg");
+            system("rm -f $config{$arch}/$repo/$arg.sig");
         }
         
-        # move package from incoming directory into repository
+        # move package and signature from incoming directory into repository
         case "insert" {
             system("mv -f $config{incoming}/$arch/$arg $config{$arch}/$repo");
+            system("mv -f $config{incoming}/$arch/$arg.sig $config{$arch}/$repo");
         }
         
-        # move package between repositories
+        # move package and signature between repositories
         case "move" {
             my ($oldrepo, $newrepo) = @{$repo};
             system("mv $config{$arch}/$oldrepo/$arg $config{$arch}/$newrepo/$arg");
+            system("mv $config{$arch}/$oldrepo/$arg.sig $config{$arch}/$newrepo/$arg.sig");
         }
         
         # builder power control
