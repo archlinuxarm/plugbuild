@@ -803,16 +803,16 @@ sub status {
             if ($row[0]) { # package found
                 my ($id, $name, $pkgname, $repo, $pkgver, $pkgrel, $done, $fail, $builder, $git, $abs, $skip, $highmem, $override, $del, $start, $finish) = @row;
                 
-                # add to combined skipped architecture printout at end
-                if (!($skip & $self->{skip}->{$arch})) {
-                    $skipret .= "$arch, ";
-                    next;
-                }
-                
                 # package removed from repo, print and bail out
                 if ($del) {
                     $q_irc->enqueue(['db', 'privmsg', "[status] $repo/$name has been removed."]);
                     return;
+                }
+                
+                # add to combined skipped architecture printout at end
+                if (!($skip & $self->{skip}->{$arch})) {
+                    $skipret .= "$arch, ";
+                    next;
                 }
                 
                 # make data human-readable
