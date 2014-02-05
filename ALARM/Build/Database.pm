@@ -574,8 +574,18 @@ sub poll {
         my ($type, $path, $ref, $pkg, $repo) = @$change;
         my $hold = 0;
         
-        if (! -d $path) {           # directory doesn't exist, flag removed
-            $self->{dbh}->do("update queue set hold = 0, del = 1, ref = 1 where path = ?", undef, $path);
+        if (! -d $path) {           # directory doesn't exist
+            my $delpath;
+            if ($type eq 'abs') {
+                ($delpath) = $path =~ /(.*)\/repos.*/;
+            } elsif ($type eq 'git') {
+                $delpath = $path;
+            }
+            if (! -d $delpath) {    # base package directory doesn't exist, flag removed
+                $self->{dbh}->do("update queue set hold = 0, del = 1, ref = 1 where path = ?", undef, $path);
+            } else {                # base package directory exists, remove from queue
+                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+            }
             next;
         }
         if ($pkg =~ /.*\-lts$/) {  # skip LTS packages, remove from queue
