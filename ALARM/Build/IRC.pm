@@ -192,11 +192,15 @@ sub _cb_publicmsg {
                 }
             }
             case "!prune" {
-                my ($pkg) = $arg ? split(/ /, $arg, 2) : undef;
-                if (!$pkg) {
-                    $self->privmsg("usage: !prune <package>");
+                if ($arg) {
+                    my ($arch, $pkg) = split(/ /, $arg, 3);
+                    if ($pkg) {
+                        $q_db->enqueue(['irc', 'prune', $arch, $pkg]);
+                    } else {
+                        $q_db->enqueue(['irc', 'prune', 0, $arch]);
+                    }
                 } else {
-                    $q_db->enqueue(['irc', 'prune', $pkg]);
+                    $self->privmsg("usage: !prune [arch] <package>");
                 }
             }
             case "!push" {

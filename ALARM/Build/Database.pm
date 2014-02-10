@@ -638,11 +638,29 @@ sub poll {
 # delete packages from the repos
 # sender: IRC
 sub prune {
-    my ($self, $pkg) = @_;
-    foreach my $arch (keys %{$self->{arch}}) {
+    my ($self, $arch, $pkg) = @_;
+    
+    if ($arch != 0) {
+        # determine if we were given shorthand arch string or not
+        if (!$self->{arch}->{$arch}) {
+            $arch = "armv$arch";
+            if (!$self->{arch}->{$arch}) {
+                $q_irc->enqueue(['db', 'privmsg', "usage: !prune [arch] <package>"]);
+                return;
+            }
+        }
+        
+        # delete package for single architecture
         $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set done = 0, fail = 0 where package = ?", undef, $pkg);
         $self->pkg_prep($arch, { pkgbase => $pkg });
         $self->pkg_log($pkg, '', $arch);
+    } else {
+        # delete packages for all architectures
+        foreach $arch (keys %{$self->{arch}}) {
+            $self->{dbh}->do("update $arch as a inner join abs on (a.id = abs.id) set done = 0, fail = 0 where package = ?", undef, $pkg);
+            $self->pkg_prep($arch, { pkgbase => $pkg });
+            $self->pkg_log($pkg, '', $arch);
+        }
     }
 }
 
