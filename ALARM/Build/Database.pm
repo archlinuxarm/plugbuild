@@ -79,6 +79,7 @@ sub aur_check {
     my $rows = $self->{dbh}->selectall_arrayref("select package, pkgver, pkgrel from abs where repo = 'aur' and del = 0");
     foreach my $row (@$rows) {
         my ($pkg, $pkgver, $pkgrel) = @$row;
+        $pkgrel =~ s/\.+.*//;                                       # strip our decimal version from pkgrel
         $aurlist{$pkg} = "$pkgver-$pkgrel";
         push @request, "arg[]=$pkg";
     }
@@ -88,8 +89,9 @@ sub aur_check {
         print " ---> Error retrieving AUR package information: $aur_json->{results}\n";
     } else {                                                        # all good, results is an array of dictionaries
         foreach my $pkg (@{$aur_json->{results}}) {
-            if ($aurlist{$pkg->{Name}} ne $pkg->{Version}) {
-                $q_irc->enqueue(['db', 'privmsg', "$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
+            my ($version) = $pkg->{Version} =~ /.*:(.*)/;           # strip epoch
+            if ($aurlist{$pkg->{Name}} ne $version) {
+                $q_irc->enqueue(['db', 'privmsg', "$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $version"]);
                 delete $aurlist{$pkg->{Name}};
             } elsif ($aurlist{$pkg->{Name}}) {
                 delete $aurlist{$pkg->{Name}};                      # version checks, remove from list
