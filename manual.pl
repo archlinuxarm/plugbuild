@@ -34,10 +34,6 @@ $state->{arch}    = $config{primary};
 # get package files from arguments
 foreach my $n (2 .. $#ARGV) {
     my $filename = $ARGV[$n];
-    my $md5sum_file = `md5sum $filename`;
-    $md5sum_file = (split(/ /, $md5sum_file))[0];
-    $files{$filename} = $md5sum_file;
-    $current_filename = $filename;
     
     # send file to farmer
     if (defined $config{farmer}) {
@@ -49,6 +45,12 @@ foreach my $n (2 .. $#ARGV) {
         print " -> Uploading to plugbuild..\n";
         `rsync -rtl $filename $config{build_pkg}/$state->{arch}`;
     } while ($? >> 8);
+
+    next if ($filename =~ /.*\.sig$/);
+    my $md5sum_file = `md5sum $filename`;
+    $md5sum_file = (split(/ /, $md5sum_file))[0];
+    $files{$filename} = $md5sum_file;
+    $current_filename = $filename;
 }
 
 # AnyEvent setup
