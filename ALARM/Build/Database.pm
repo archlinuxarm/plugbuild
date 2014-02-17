@@ -89,9 +89,9 @@ sub aur_check {
         print " ---> Error retrieving AUR package information: $aur_json->{results}\n";
     } else {                                                        # all good, results is an array of dictionaries
         foreach my $pkg (@{$aur_json->{results}}) {
-            my ($version) = $pkg->{Version} =~ /.*:(.*)/;           # strip epoch
-            if ($aurlist{$pkg->{Name}} ne $version) {
-                $q_irc->enqueue(['db', 'privmsg', "$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $version"]);
+            $pkg->{Version} =~ s/.*\://;                            # strip epoch
+            if ($aurlist{$pkg->{Name}} ne $pkg->{Version}) {
+                $q_irc->enqueue(['db', 'privmsg', "$pkg->{Name} is different in git, git = $aurlist{$pkg->{Name}}, aur = $pkg->{Version}"]);
                 delete $aurlist{$pkg->{Name}};
             } elsif ($aurlist{$pkg->{Name}}) {
                 delete $aurlist{$pkg->{Name}};                      # version checks, remove from list
