@@ -1372,7 +1372,7 @@ sub _process {
             foreach my $arch (keys %{$self->{arch}}) {
                 my ($fail) = $self->{dbh}->selectrow_array("select fail from $arch where id = ?", undef, $db_id);
                 if ($fail == 1) {
-                    $self->{dbh}->do("insert into $arch (id, done, fail) values (?, 0, 0) on duplicate key update done = 0, fail = 0", undef, $db_id);
+                    $self->{dbh}->do("insert into $arch (id, done, fail) values (?, 0, 0) on duplicate key update done = ?, fail = 0", undef, $db_id, $is_done);
                     $q_irc->enqueue(['db', 'privmsg', "[process] detected updates without version bump, unfailing $arch/$pkg"]);
                 }
             }
