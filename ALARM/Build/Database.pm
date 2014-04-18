@@ -1428,7 +1428,7 @@ sub _process {
                 left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
             group by pkg) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
         if ($ready > 0) {
-            $q_svc->enqueue(['db', 'start', $arch]);
+            $q_svc->enqueue(['db', 'start', $arch, 0]);
             print "[process] starting $arch\n";
         }
     }
