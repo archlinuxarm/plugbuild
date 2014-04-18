@@ -481,7 +481,7 @@ sub pkg_unfail {
     if (!$self->{arch}->{$arch}) {
         $arch = "armv$arch";
         if (!$self->{arch}->{$arch}) {
-            $q_irc->enqueue(['db', 'privmsg', "usage: !unfail <arch> <package|all>"]);
+            $q_irc->enqueue(['db', 'privmsg', "usage: !unfail <arch|all> <package|all>"]);
             return;
         }
     }

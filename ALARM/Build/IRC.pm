@@ -276,9 +276,15 @@ sub _cb_publicmsg {
             case "!unfail" {
                 my ($arch, $pkg) = split(/ /, $arg, 2);
                 if ($pkg && $arch) {
-                    $q_db->enqueue(['irc', 'pkg_unfail', $arch, $pkg]);
+                    if ($arch eq "all") {
+                        $q_db->enqueue(['irc', 'pkg_unfail', 'armv5', $pkg]);
+                        $q_db->enqueue(['irc', 'pkg_unfail', 'armv6', $pkg]);
+                        $q_db->enqueue(['irc', 'pkg_unfail', 'armv7', $pkg]);
+                    } else {
+                        $q_db->enqueue(['irc', 'pkg_unfail', $arch, $pkg]);
+                    }
                 } else {
-                    $self->privmsg("usage: !unfail <arch> <package|all>");
+                    $self->privmsg("usage: !unfail <arch|all> <package|all>");
                 }
             }
             case "!unskip" {
