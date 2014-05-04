@@ -100,7 +100,7 @@ sub _cb_disconnect {
 	}
 	
     sleep $self->{delay};
-    $self->connect($con);
+    $self->_connect($con);
 }
 
 # callback for public (channel) messages
