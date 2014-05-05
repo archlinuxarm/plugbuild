@@ -1417,7 +1417,7 @@ sub _process {
     # stop architectures with holds/start architectures without holds
     foreach my $arch (keys %{$self->{arch}}) {
         if ($self->{skip}->{$arch} & $hold_total) {
-            $q_svc->enqueue(['db', 'stop', $arch]);
+            $q_svc->enqueue(['db', 'stop', $arch, 0]);
             next;
         }
         my ($ready) = $self->{dbh}->selectrow_array("select count(pkg) from

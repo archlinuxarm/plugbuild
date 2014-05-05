@@ -361,17 +361,22 @@ sub status {
 # mark an architecture as not available to build
 # sender: Database, IRC, Internal
 sub stop {
-    my ($self, $arch) = @_;
+    my ($self, $arch, $admin) = @_;
     
     if ($arch eq 'all') {
         foreach my $a (keys %{$self->{arch}}) {
             next if ($self->{$a} eq 'admin-stop');
             if ($self->{$a} eq 'hold-start' || $self->{$a} eq 'hold-stop') {
-                $self->{$a} = 'hold-admin-stop';
-                print "[stop] Holding $arch, will administratively stop when hold is released\n";
-            } else {
+                if ($admin) {
+                    $self->{$a} = 'hold-admin-stop';
+                    print "[stop] Holding $arch, will administratively stop when hold is released\n";
+                }
+            } elsif ($admin) {
                 $self->{$a} = 'admin-stop';
                 print "[stop] Administratively stopping $arch\n";
+            } else {
+                $self->{$a} = 'stop';
+                print "[stop] Stopping $arch\n";
             }
         }
         return;
@@ -381,15 +386,20 @@ sub stop {
     if (!$self->{$arch}) {
         $q_irc->enqueue(['svc', 'privmsg', "[stop] No such architecture $arch"]);
         
-    # stop when held for mirroring, switch to hold-admin-stop
+    # stop when held for mirroring
     } elsif ($self->{$arch} eq 'hold-start' || $self->{$arch} eq 'hold-stop') {
-        $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will administratively stop when hold is released"]);
-        $self->{$arch} = 'hold-admin-stop';
+        if ($admin) {
+            $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will administratively stop when hold is released"]);
+            $self->{$arch} = 'hold-admin-stop';
+        } elsif ($self->{$arch} eq 'hold-start') {
+            $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will stop when hold is released"]);
+            $self->{$arch} = 'hold-stop';
+        }
         
     # otherwise, stop the architecture
-    } else {
-        $q_irc->enqueue(['svc', 'privmsg', "[stop] Administratively stopping $arch"]);
-        $self->{$arch} = 'admin-stop';
+    } elsif ($self->{$arch} eq 'start') {
+        $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
+        $self->{$arch} = 'stop';
     }
     
 }
