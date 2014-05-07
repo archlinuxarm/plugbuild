@@ -321,26 +321,45 @@ sub ready {
 sub start {
     my ($self, $arch, $admin) = @_;
     
-    # no such architecture
+    # start all architectures (all only comes from IRC)
+    if ($arch eq 'all') {
+        foreach my $a (keys %{$self->{arch}}) {
+            if ($self->{$a} eq 'hold-stop' || $self->{arch} eq 'hold-admin-stop') {
+                $q_irc->enqueue(['svc', 'privmsg', "[start] Holding $arch, will start when hold is released"]);
+                $self->{$a} = 'hold-start';
+            } elsif ($self-{$a} eq 'stop') {
+                $q_irc->enqueue(['svc', 'privmsg', "[start] Starting $arch"]);
+                $self->{$a} = 'start';
+            }
+        }
+        return;
+    }
+    
+    # determine if we were given shorthand or invalid arch string
     if (!$self->{$arch}) {
-        $q_irc->enqueue(['svc', 'privmsg', "[start] No such architecture $arch"]);    
+        $arch = "armv$arch";
+        if (!$self->{$arch}) {
+            $q_irc->enqueue(['svc', 'privmsg', "[stop] No such architecture $arch"]);
+            return;
+        }
+    }
+    
+    # architecture already started
+    if ($self->{$arch} eq 'start' || $self->{$arch} eq 'hold-start') {
+        return;
         
     # architecture administratively stopped
-    } elsif ($self->{$arch} eq 'admin-stop' && !$admin) {
+    } elsif (!admin && ($self->{$arch} eq 'admin-stop' || $self->{arch} eq 'hold-admin-stop')) {
         $q_irc->enqueue(['svc', 'privmsg', "[start] $arch administratively stopped, not starting"]);
         
     # start when held for mirroring, switch to hold-start
-    } elsif ($self->{$arch} eq 'hold-start' || $self->{$arch} eq 'hold-stop' || ($self->{arch} eq 'hold-admin-stop' && $admin)) {
+    } elsif ($self->{$arch} eq 'hold-stop' || ($admin && $self->{$arch} eq 'hold-admin-stop')) {
         $q_irc->enqueue(['svc', 'privmsg', "[start] Holding $arch, will start when hold is released"]);
         $self->{$arch} = 'hold-start';
         
     # start but no packages available for that architecture
     } elsif ($self->{ready}->{$arch}->{total} && $self->{ready}->{$arch}->{total} == 0) {
         $q_irc->enqueue(['svc', 'privmsg', "[start] No packages available for $arch, not starting"]);
-        
-    # architecture already started
-    } elsif ($self->{$arch} eq 'start') {
-        return;
         
     # otherwise, start the architecture
     } else {
@@ -363,45 +382,59 @@ sub status {
 sub stop {
     my ($self, $arch, $admin) = @_;
     
+    # administratively stop all architectures (all only comes from IRC)
     if ($arch eq 'all') {
         foreach my $a (keys %{$self->{arch}}) {
-            next if ($self->{$a} eq 'admin-stop');
             if ($self->{$a} eq 'hold-start' || $self->{$a} eq 'hold-stop') {
-                if ($admin) {
-                    $self->{$a} = 'hold-admin-stop';
-                    print "[stop] Holding $arch, will administratively stop when hold is released\n";
-                }
-            } elsif ($admin) {
+                $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will administratively stop when hold is released"]);
+                $self->{$a} = 'hold-admin-stop';
+            } elsif ($self->{$a} eq 'start' || $self->{$a} eq 'stop') {
+                $q_irc->enqueue(['svc', 'privmsg', "[stop] Administratively stopping $arch"]);
                 $self->{$a} = 'admin-stop';
-                print "[stop] Administratively stopping $arch\n";
-            } else {
-                $self->{$a} = 'stop';
-                print "[stop] Stopping $arch\n";
             }
         }
         return;
     }
     
-    # no such architecture
+    # determine if we were given shorthand or invalid arch string
     if (!$self->{$arch}) {
-        $q_irc->enqueue(['svc', 'privmsg', "[stop] No such architecture $arch"]);
-        
-    # stop when held for mirroring
-    } elsif ($self->{$arch} eq 'hold-start' || $self->{$arch} eq 'hold-stop') {
-        if ($admin) {
-            $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will administratively stop when hold is released"]);
-            $self->{$arch} = 'hold-admin-stop';
-        } elsif ($self->{$arch} eq 'hold-start') {
-            $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will stop when hold is released"]);
-            $self->{$arch} = 'hold-stop';
+        $arch = "armv$arch";
+        if (!$self->{$arch}) {
+            $q_irc->enqueue(['svc', 'privmsg', "[stop] No such architecture $arch"]);
+            return;
         }
-        
-    # otherwise, stop the architecture
-    } elsif ($self->{$arch} eq 'start') {
-        $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
-        $self->{$arch} = 'stop';
     }
     
+    # architecture already stopped
+    if ($self->{$arch} eq 'stop') {
+        return;
+    
+    # administratively stop..
+    } elsif ($admin) {
+        # ..when hold is released
+        if ($self->{$arch} eq 'hold-stop' || $self->{$arch} eq 'hold-start') {
+            $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will administratively stop when hold is released"]);
+            $self->{$arch} = 'hold-admin-stop';
+        
+        # ..if started
+        } elsif ($self->{$arch} eq 'start') {
+            $q_irc->enqueue(['svc', 'privmsg', "[stop] Administratively stopping $arch"]);
+            $self->{$arch} = 'admin-stop';
+        }
+        
+    # normal stop..
+    } else {
+        # ..when hold is released
+        if ($self->{$arch} eq 'hold-start') {
+            $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will stop when hold is released"]);
+            $self->{$arch} = 'hold-stop';
+        
+        # ..if started
+        } elsif ($self->{$arch} eq 'start') {
+            $q_irc->enqueue(['svc', 'privmsg', "[stop] Stopping $arch"]);
+            $self->{$arch} = 'stop';
+        }
+    }
 }
 
 # rsync push to farmer complete, set farmer ready

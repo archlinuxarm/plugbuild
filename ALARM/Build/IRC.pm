@@ -241,14 +241,10 @@ sub _cb_publicmsg {
                 }
             }
             case ["!start", "!stop"] {
-                if ($arg && ($arg eq '5' || $arg eq '6' || $arg eq '7')) {
-                    $q_svc->enqueue(['irc', substr($trigger, 1), "armv$arg", 1]);
-                } elsif ($arg && ($arg eq 'all')) {
-                    $q_svc->enqueue(['irc', substr($trigger, 1), "armv5", 1]);
-                    $q_svc->enqueue(['irc', substr($trigger, 1), "armv6", 1]);
-                    $q_svc->enqueue(['irc', substr($trigger, 1), "armv7", 1]);
+                if ($arg) {
+                    $q_svc->enqueue(['irc', substr($trigger, 1), $arg, 1]);
                 } else {
-                    $self->privmsg("usage: $trigger <all|5|6|7>");
+                    $self->privmsg("usage: $trigger <arch|all>");
                 }
             }
             case "!status" {
