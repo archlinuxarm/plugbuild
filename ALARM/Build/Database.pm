@@ -1213,10 +1213,10 @@ sub _process {
                      'alarm'        => 50 );
     
     # match holds to git updates, delete upstream holds if satisfied in overlay
-    my $rows = $self->{dbh}->selectall_arrayref("select path, queue.repo, queue.package, queue.pkgver, queue.pkgrel, abs.pkgver, abs.pkgrel, queue.skip, override, group_concat(arch) from queue left outer join architectures on queue.skip & architectures.skip > 0 inner join abs on queue.package = abs.package where ref = 1 and hold = 1 group by queue.package");
+    my $rows = $self->{dbh}->selectall_arrayref("select path, queue.repo, queue.package, queue.pkgver, queue.pkgrel, abs.repo, abs.pkgver, abs.pkgrel, queue.skip, override, group_concat(arch) from queue left outer join architectures on queue.skip & architectures.skip > 0 inner join abs on queue.package = abs.package where ref = 1 and hold = 1 group by queue.package");
     my $hold_total = 0;
     foreach my $row (@$rows) {
-        my ($path, $repo, $pkg, $pkgver, $pkgrel, $db_pkgver, $db_pkgrel, $skip, $override, $hold_arches) = @$row;
+        my ($path, $repo, $pkg, $pkgver, $pkgrel, $db_repo, $db_pkgver, $db_pkgrel, $skip, $override, $hold_arches) = @$row;
         my ($git_path, $git_pkg, $git_repo, $git_pkgver, $git_pkgrel, $git_del) = $self->{dbh}->selectrow_array("select path, package, repo, pkgver, pkgrel, del from queue where type = 'git' and ref = 1 and package = ?", undef, $pkg);
         if (defined $git_pkg) {
             print "[process] matched git package found for $pkg, determining hold status\n";
@@ -1252,7 +1252,8 @@ sub _process {
         } else {
             $hold_total |= int($skip);  # calculate arches to hold, used at the end
             my $svn_repo = $repo eq "core" || $repo eq "extra" ? "packages" : $repo eq "community" ? "community" : $repo;
-            $q_irc->enqueue(['db', 'privmsg', "[process] Holding $repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches, changes: " . makeashorterlink("https://projects.archlinux.org/svntogit/$svn_repo.git/log/trunk?h=packages/$pkg")]);
+            my $cross_repo = $repo ne $db_repo ? "$db_repo -> " : "";
+            $q_irc->enqueue(['db', 'privmsg', "[process] Holding $cross_repo$repo/$pkg, current: $db_pkgver-$db_pkgrel, new: $pkgver-$pkgrel, blocking: $hold_arches, changes: " . makeashorterlink("https://projects.archlinux.org/svntogit/$svn_repo.git/log/trunk?h=packages/$pkg")]);
         }
     }
     
