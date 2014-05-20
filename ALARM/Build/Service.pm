@@ -325,10 +325,10 @@ sub start {
     if ($arch eq 'all') {
         foreach my $a (keys %{$self->{arch}}) {
             if ($self->{$a} eq 'hold-stop' || $self->{arch} eq 'hold-admin-stop') {
-                $q_irc->enqueue(['svc', 'privmsg', "[start] Holding $arch, will start when hold is released"]);
+                $q_irc->enqueue(['svc', 'privmsg', "[start] Holding $a, will start when hold is released"]);
                 $self->{$a} = 'hold-start';
             } elsif ($self->{$a} eq 'stop') {
-                $q_irc->enqueue(['svc', 'privmsg', "[start] Starting $arch"]);
+                $q_irc->enqueue(['svc', 'privmsg', "[start] Starting $a"]);
                 $self->{$a} = 'start';
             }
         }
@@ -386,10 +386,10 @@ sub stop {
     if ($arch eq 'all') {
         foreach my $a (keys %{$self->{arch}}) {
             if ($self->{$a} eq 'hold-start' || $self->{$a} eq 'hold-stop') {
-                $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $arch, will administratively stop when hold is released"]);
+                $q_irc->enqueue(['svc', 'privmsg', "[stop] Holding $a, will administratively stop when hold is released"]);
                 $self->{$a} = 'hold-admin-stop';
             } elsif ($self->{$a} eq 'start' || $self->{$a} eq 'stop') {
-                $q_irc->enqueue(['svc', 'privmsg', "[stop] Administratively stopping $arch"]);
+                $q_irc->enqueue(['svc', 'privmsg', "[stop] Administratively stopping $a"]);
                 $self->{$a} = 'admin-stop';
             }
         }
