@@ -327,7 +327,7 @@ sub start {
             if ($self->{$a} eq 'hold-stop' || $self->{arch} eq 'hold-admin-stop') {
                 $q_irc->enqueue(['svc', 'privmsg', "[start] Holding $arch, will start when hold is released"]);
                 $self->{$a} = 'hold-start';
-            } elsif ($self-{$a} eq 'stop') {
+            } elsif ($self->{$a} eq 'stop') {
                 $q_irc->enqueue(['svc', 'privmsg', "[start] Starting $arch"]);
                 $self->{$a} = 'start';
             }
