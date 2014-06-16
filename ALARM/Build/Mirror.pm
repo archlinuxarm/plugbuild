@@ -299,18 +299,20 @@ sub _tier2 {
     $arch = "armv7h" if $arch eq "armv7";
     
     my $rows = $self->{dbh}->selectall_arrayref("select id, domain from mirrors where tier = 2");
-    foreach my $row (@$rows) {
-        my ($id, $domain) = @$row;
-        my $remote = `wget -t 1 -T 20 -O - $domain/$arch/sync 2>/dev/null`;
-        chomp $remote;
-        if ($remote ne $sync) {
-            $q_irc->enqueue(['mir', 'privmsg', "[mirror] Tier 2 check failed on $domain"]);
-            $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
-            next;
+    if (scalar(@{$rows})) {
+        foreach my $row (@$rows) {
+            my ($id, $domain) = @$row;
+            my $remote = `wget -t 1 -T 20 -O - $domain/$arch/sync 2>/dev/null`;
+            chomp $remote;
+            if ($remote ne $sync) {
+                $q_irc->enqueue(['mir', 'privmsg', "[mirror] Tier 2 check failed on $domain"]);
+                $self->{dbh}->do("update mirrors set active = 0 where id = ?", undef, $id);     # de-activate failed mirror
+                next;
+            }
+            $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
         }
-        $self->{dbh}->do("update mirrors set active = 1 where id = ?", undef, $id);         # activate good mirror
+        $q_irc->enqueue(['mir', 'privmsg', "[mirror] Tier 2 check complete for $arch"]);
     }
-    $q_irc->enqueue(['mir', 'privmsg', "[mirror] Tier 2 check complete for $arch"]);
 }
 
 1;
