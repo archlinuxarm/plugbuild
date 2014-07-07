@@ -87,7 +87,10 @@ sub done {
     
     # update mirrors table and log
     $self->{dbh}->do("update mirrors set active = ? where id = ?", undef, $ret ? 0 : 1, $id);
-    $self->{dbh}->do("insert into mirror_log (id, sent, speed, time, fail) values (?, ?, ?, ?, ?)", undef, $id, $sent, $speed, $time, $ret);
+    $self->{dbh}->do("insert into mirror_log (id, entry, mirror, sent, speed, time, fail, ts)
+                      select (coalesce(max(id), -1) + 1), (coalesce(max(id), -1) + 1) % 100, ?, ?, ?, ?, ?, unix_timestamp() from mirror_log where mirror = ?
+                      on duplicate key update id = values(id), ts = unix_timestamp(), sent = ?, speed = ?, time = ?, fail = ?",
+                      undef, $id, $sent, $speed, $time, $ret, $id, $sent, $speed, $time, $ret);
     
     # decrement and check number of mirrors left to rsync for this architecture
     if (--$self->{$arch}->{count} == 0) {
