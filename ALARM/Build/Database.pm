@@ -510,6 +510,7 @@ sub pkg_unfail {
 # sender: Service
 sub poll {
     my ($self, $poll_type) = @_;
+    my %trunks;
     
     # parse sources
     my $repos = $self->{dbh}->selectall_arrayref("select id, type, root, sha from sources");
@@ -536,6 +537,10 @@ sub poll {
             @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-2 | sort -u`;
         } elsif ($type eq 'abs') {  # upstream: package
             @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-3 | sort -u | egrep '.*/(core|extra|community)-(i686|any)'`;
+            my @others = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | egrep '.*/trunk/.*' | cut -d'/' -f1 | sort -u`;
+            foreach my $other (@others) {
+                $trunks{$other} = $root;
+            }
         } else {                    # skip bad entries
             $q_irc->enqueue(['db', 'privmsg', "[poll] Unknown source ($id) type: $type, root: $root"]);
             next;
@@ -556,6 +561,7 @@ sub poll {
             } elsif ($type eq 'abs') {
                 ($pkg, $repo) = $path =~ /([^\/]*)\/repos\/(\w+)/;
                 $email = '';        # no email for abs
+                delete $trunks{$pkg} if exists $trunks{$pkg};
             }
             print "[poll] inserting $type, path: $root/$path, package: $pkg, repo: $repo\n";
             $self->{dbh}->do("insert into queue (type, path, package, repo, email) values (?, ?, ?, ?, ?)
@@ -631,6 +637,17 @@ sub poll {
         # update queue data
         $self->{dbh}->do("update queue set ref = 1, hold = ?, pkgname = ?, repo = ?, provides = ?, pkgver = ?, pkgrel = ?, depends = ?, makedepends = ?, skip = ?, noautobuild = ?, highmem = ? where path = ?",
                          undef, $hold, $pkgname, $repo, $provides, $pkgver, $pkgrel, $depends, $makedepends, $buildarch, $noautobuild, $highmem, $path);
+    }
+    
+    # check trunk changes for late package removals
+    foreach my $trunk (keys %trunks) {
+        my $root = $trunks{$trunk};
+        if (! -d "$root/$trunk") {  # base package directory doesn't exist, flag removed
+            my ($repo) = $self->{dbh}->selectrow_array("select repo from abs where package = ? and del = 0", undef, $trunk);
+            next unless defined $repo;
+            $self->{dbh}->do("insert into queue (type, path, package, repo, del, ref) values (?, ?, ?, ?, ?, ?)",
+                              undef, 'abs', "$root/$trunk", $trunk, $repo, 1, 1);
+        }
     }
     
     # bring queue items ref > 1 back to 1 for possible processing next round
