@@ -539,6 +539,7 @@ sub poll {
             @paths = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | cut -d'/' -f-3 | sort -u | egrep '.*/(core|extra|community)-(i686|any)'`;
             my @others = `git --work-tree=$root --git-dir=$root/.git diff --name-only $sha $newsha | egrep '.*/trunk/.*' | cut -d'/' -f1 | sort -u`;
             foreach my $other (@others) {
+                chomp $other;
                 $trunks{$other} = $root;
             }
         } else {                    # skip bad entries
