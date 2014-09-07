@@ -349,7 +349,7 @@ sub start {
         return;
         
     # architecture administratively stopped
-    } elsif (!$admin && ($self->{$arch} eq 'admin-stop' || $self->{arch} eq 'hold-admin-stop')) {
+    } elsif (!$admin && ($self->{$arch} eq 'admin-stop' || $self->{$arch} eq 'hold-admin-stop')) {
         $q_irc->enqueue(['svc', 'privmsg', "[start] $arch administratively stopped, not starting"]);
         
     # start when held for mirroring, switch to hold-start
