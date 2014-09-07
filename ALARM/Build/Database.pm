@@ -1298,6 +1298,9 @@ sub _process {
             }
             if ($db_repo ne $repo) {        # don't delete a package that exists in a different repo now
                 print "[process] not deleting $repo/$pkg, exists in repo $db_repo now, dropping from queue\n";
+                $self->{dbh}->do("delete from queue where path = ?", undef, $path);
+                `rm -f $workroot/$repo-$pkg.tgz`;
+                next;
             } elsif ($type eq 'abs') {
                 if ($db_git == 1) {         # warn us that upstream has trashed something we track, adjust abs flag
                     $q_irc->enqueue(['db', 'privmsg', "[process] Upstream has removed $repo/$pkg, also tracked in overlay"]);
