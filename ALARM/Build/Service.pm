@@ -134,9 +134,9 @@ sub arches {
 }
 
 # repo command for farmer
-#  - command    - add/insert/remove/delete/move/power
+#  - command    - add/insert/remove/delete/move
 #  - arg        - pkgname/filename
-# sender: Datbase
+# sender: Database
 sub farm {
     my ($self, $command, $arch, $repo, $arg) = @_;
     foreach my $oucn (keys %{$self->{clientsref}}) {
@@ -255,6 +255,18 @@ sub next_pkg {
         undef $builder->{pkgbase};
         undef $builder->{arch};
         print "SVC: next_pkg: something bad happened, got FAIL for $cn\n";
+    }
+}
+
+# power command for controller
+# sender: IRC
+sub power {
+    my ($self, $command, $target) = @_;
+    foreach my $oucn (keys %{$self->{clientsref}}) {
+        next if (!($oucn =~ m/controller\/.*/));
+        my $controller = $self->{clients}->{$self->{clientsref}->{"$oucn"}};
+        $controller->{handle}->push_write(json => { command => $command, 
+                                                    target  => $target });
     }
 }
 
@@ -668,17 +680,22 @@ sub _cb_read {
         # farmer client
         case "farmer" {
             switch ($data->{command}) {
-                # power command ACK
-                #  - data       => message to print to IRC
-                case "power" {
-                    $q_irc->enqueue(['svc', 'privmsg', $data->{data}]);
-                }
-                
                 # sync farmer - rsync push
                 #  - address    => address to push to
                 case "sync" {
                     $q_mir->enqueue(['svc', 'sync', $data->{address}, $client->{cn}]);
                     $client->{ready} = 0;
+                }
+            }
+        }
+        
+        # controller client
+        case "controller" {
+            switch ($data->{command}) {
+                # power command ACK
+                #  - data       => message to print to IRC
+                case "power" {
+                    $q_irc->enqueue(['svc', 'privmsg', $data->{data}]);
                 }
             }
         }

@@ -186,7 +186,10 @@ sub _cb_publicmsg {
             }
             case "!power" {
                 if ($arg) {
-                    $q_svc->enqueue(['db', 'farm', 'power', '', '', $arg]);
+                    my ($command, $target) = split(/ /, $arg, 3);
+                    if ($command && $target) {
+                        $q_svc->enqueue(['irc', 'power', $command, $target]);
+                    }
                 } else {
                     $self->privmsg("usage: !power <cycle|on|off> <builder#>");
                 }

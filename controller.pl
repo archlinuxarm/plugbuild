@@ -12,14 +12,24 @@ use AnyEvent::TLS;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
 use JSON::XS;
+use Device::SerialPort;
 
-my %config = ParseConfig("$Bin/farmer.conf");
+my %config = ParseConfig("$Bin/controller.conf");
 
 # AnyEvent setup
 my $condvar = AnyEvent->condvar;
 my $plugbuild;
 my $w = AnyEvent->signal(signal => "INT", cb => sub { $condvar->broadcast; });
 my $timer_retry;
+
+# serial setup for power control
+my $serial = new Device::SerialPort("/dev/ttyACM0");
+$serial->baudrate(9600);
+$serial->parity("none");
+$serial->databits(8);
+$serial->stopbits(1);
+$serial->handshake("none");
+$serial->write_settings;
 
 # main event loop
 con();
@@ -114,43 +124,28 @@ sub cb_read {
     
     return if (!defined $data);
     
-    my $arch = $data->{arch};
-    my $repo = $data->{repo};
-    my $arg  = $data->{arg};
-    switch ($data->{command}) {
-        # repo-add package file
-        case "add" {
-            system("repo-add $config{$arch}/$repo/$repo.db.tar.gz $config{$arch}/$repo/$arg");
-            system("repo-add -q -f $config{$arch}/$repo/$repo.files.tar.gz $config{$arch}/$repo/$arg");
+    my $command = $data->{command};
+    my $target  = $data->{target};
+    
+    return if ($target < 1 || $target > 12);
+    
+    my $num = chr(96+int($target)); # numeric -> ascii representation
+    
+    switch ($command) {
+        case "on" {
+            $serial->write("o$num");
+            $handle->push_write(json => {command => 'power', data => "[power] Builder $target turned on"});
         }
-        
-        # delete package file and signature from filesystem
-        case "delete" {
-            system("rm -f $config{$arch}/$repo/$arg");
-            system("rm -f $config{$arch}/$repo/$arg.sig");
+        case "off" {
+            $serial->write("x$num");
+            $handle->push_write(json => {command => 'power', data => "[power] Builder $target turned off"});
         }
-        
-        # move package and signature from incoming directory into repository
-        case "insert" {
-            system("mv -f $config{incoming}/$arch/$arg $config{$arch}/$repo");
-            system("mv -f $config{incoming}/$arch/$arg.sig $config{$arch}/$repo");
+        case "cycle" {
+            $serial->write("c$num");
+            $handle->push_write(json => {command => 'power', data => "[power] Builder $target cycled"});
         }
-        
-        # move package and signature between repositories
-        case "move" {
-            my ($oldrepo, $newrepo) = @{$repo};
-            system("mv $config{$arch}/$oldrepo/$arg $config{$arch}/$newrepo/$arg");
-            system("mv $config{$arch}/$oldrepo/$arg.sig $config{$arch}/$newrepo/$arg.sig");
-        }
-        
-        # repo-remove package
-        case "remove" {
-            system("repo-remove $config{$arch}/$repo/$repo.db.tar.gz $arg");
-        }
-        
-        # sync ACK
-        case "sync" {
-            print "-> Local repositories synchronized.\n";
+        else {
+            $handle->push_write(json => {command => 'power', data => "[power] Unknown command '$command'"});
         }
     }
 }
