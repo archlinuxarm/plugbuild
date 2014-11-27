@@ -110,7 +110,6 @@ sub cb_starttls {
     if ($success) {
         $handle->rtimeout(0);   # stop auto-destruct
         $handle->on_read(sub { $handle->push_read(json => sub { cb_read(@_); }) });    # set read callback
-        $handle->push_write(json => {command => 'sync', address => $config{rsync}});
         return;
     }
     
