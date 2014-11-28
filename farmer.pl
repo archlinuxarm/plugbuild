@@ -120,7 +120,7 @@ sub cb_read {
     switch ($data->{command}) {
         # repo-add package file
         case "add" {
-            system("repo-add $config{$arch}/$repo/$repo.db.tar.gz $config{$arch}/$repo/$arg");
+            system("repo-add -q $config{$arch}/$repo/$repo.db.tar.gz $config{$arch}/$repo/$arg");
             system("repo-add -q -f $config{$arch}/$repo/$repo.files.tar.gz $config{$arch}/$repo/$arg");
         }
         
