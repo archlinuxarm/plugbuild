@@ -145,7 +145,7 @@ sub cb_read {
         
         # repo-remove package
         case "remove" {
-            system("repo-remove $config{$arch}/$repo/$repo.db.tar.gz $arg");
+            system("repo-remove -q $config{$arch}/$repo/$repo.db.tar.gz $arg");
         }
         
         # sync ACK
