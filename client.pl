@@ -344,6 +344,9 @@ sub build_start {
     system("echo '' >> PKGBUILD"); # echo blank line for malformed PKGBUILDs
     system("makepkg -g >> PKGBUILD");
     
+    # import specified valid pgp keys
+    system('(. ./PKGBUILD && for i in ${validpgpkeys[@]}; do gpg --recv-keys $i; done)');
+    
     # pause to allow repo to settle
     sleep 3;
     
@@ -413,6 +416,9 @@ sub build_finish {
         $state->{command} = 'prep';
         $h->push_write(json => $state);
     }
+    
+    # delete imported pgp keys
+    system('(. ./PKGBUILD && for i in ${validpgpkeys[@]}; do gpg --batch --delete-keys --yes $i; done)');
 }
 
 sub cb_add {
