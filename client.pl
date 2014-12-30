@@ -48,7 +48,7 @@ my $h;
 my $w = AnyEvent->signal(signal => "INT", cb => sub { bailout(); });
 my $timer_retry;
 my $timer_idle;
-my $server = tcp_server "127.0.0.1", 80, sub { cd_accept(@_); };
+my $server = tcp_server "127.0.0.1", 8000, sub { cd_accept(@_); };
 
 # set powersave governor
 system("cpufreq-set -rg powersave");
