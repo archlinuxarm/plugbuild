@@ -418,7 +418,7 @@ sub build_finish {
     }
     
     # delete imported pgp keys
-    system('(. ./PKGBUILD && for i in ${validpgpkeys[@]}; do gpg --batch --delete-keys --yes $i; done)');
+    system("(. $workroot/$state->{pkgbase}/PKGBUILD && for i in \${validpgpkeys[\@]}; do gpg --recv-keys \$i; done)");
 }
 
 sub cb_add {
