@@ -342,7 +342,7 @@ sub build_start {
     # rebuild sources in case of old/bad checksums
     print " -> Rebuild sources\n";
     system("echo '' >> PKGBUILD"); # echo blank line for malformed PKGBUILDs
-    system("makepkg -g --asroot >> PKGBUILD");
+    system("makepkg -g >> PKGBUILD");
     
     # pause to allow repo to settle
     sleep 3;
