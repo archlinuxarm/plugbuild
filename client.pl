@@ -345,7 +345,7 @@ sub build_start {
     system("makepkg -g >> PKGBUILD");
     
     # import specified valid pgp keys
-    system('(. ./PKGBUILD && for i in ${validpgpkeys[@]}; do gpg --recv-keys $i; done)');
+    system('bash', '-c', '(. ./PKGBUILD && for i in ${validpgpkeys[@]}; do gpg --recv-keys $i; done)');
     
     # pause to allow repo to settle
     sleep 3;
@@ -418,7 +418,7 @@ sub build_finish {
     }
     
     # delete imported pgp keys
-    system("(. $workroot/$state->{pkgbase}/PKGBUILD && for i in \${validpgpkeys[\@]}; do gpg --batch --delete-keys --yes \$i; done)");
+    system('bash', '-c', "(. $workroot/$state->{pkgbase}/PKGBUILD && for i in \${validpgpkeys[\@]}; do gpg --batch --delete-keys --yes \$i; done)");
 }
 
 sub cb_add {
