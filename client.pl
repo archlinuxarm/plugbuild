@@ -352,7 +352,7 @@ sub build_start {
     
     # build package, replace perl process with mkarchroot
     print " -> Building package\n";
-    exec("arch-nspawn -c $cacheroot/$arch $config{$arch}{chroot}/root pacman -Syyu --noconfirm; PKGDEST='$pkgdest' makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -Acsfr --skippgpcheck --nocheck --noprogressbar > $pkgbase-$version-$arch.log 2>&1") or print "couldn't exec: $!";
+    exec("arch-nspawn -c $cacheroot/$arch $config{$arch}{chroot}/root pacman -Syyu --noconfirm; PKGDEST='$pkgdest' sudo -E makechrootpkg -cC $cacheroot/$arch -r $config{$arch}{chroot} -- -Acsfr --skippgpcheck --nocheck --noprogressbar > $pkgbase-$version-$arch.log 2>&1") or print "couldn't exec: $!";
 }
 
 sub build_finish {
