@@ -39,7 +39,7 @@ sub Run {
         return -1;
     }
     
-    $self->{threads_max} = 5;   # maximum number of rsync threads
+    $self->{threads_max} = 10;  # maximum number of rsync threads
     
     # spawn worker threads
     for (my $i = 0; $i < $self->{threads_max}; $i++) {
