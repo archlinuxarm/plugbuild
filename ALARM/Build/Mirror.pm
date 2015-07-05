@@ -238,7 +238,7 @@ sub sync {
     my ($self, $address, $cn) = @_;
     
     print "Mirror: pushing to $address\n";
-    foreach my $arch ('armv5', 'armv6', 'armv7') {
+    foreach my $arch ('armv5', 'armv6', 'armv7', 'armv8') {
         `rsync -4rlt --delete $self->{repo}->{$arch} $address`;
         if ($? >> 8) {
             print "Mirror: failed to push $arch to $address: $!\n";
