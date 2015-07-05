@@ -766,6 +766,7 @@ sub ready_list {
 #   skip bitmasks in use:
 #    - armv5:  0000 0011 ( 3) - all | v5
 #    - armv7:  0000 0101 ( 5) - all | v7
+#    - armv8:  0000 1001 ( 9) - all | v8
 #    - armv6:  0001 0001 (17) - all | v6
 # sender: IRC
 sub rehash {

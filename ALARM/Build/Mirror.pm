@@ -194,6 +194,9 @@ sub queue {
     my ($self, $arch) = @_;
     print "Mirror: queuing $arch\n";
     
+    # temporary: don't mirror v8
+    return if ($arch eq 'armv8');
+    
     # refuse to mirror an arch if it's already mirroring
     if ($self->{$arch}->{count} && $self->{$arch}->{count} > 0) {
         $q_irc->enqueue(['db', 'privmsg', "[queue] Refusing to mirror $arch - sync already in progress"]);
@@ -300,6 +303,7 @@ sub _tier2 {
     $arch = "arm" if $arch eq "armv5";
     $arch = "armv6h" if $arch eq "armv6";
     $arch = "armv7h" if $arch eq "armv7";
+    $arch = "aarch64" if $arch eq "armv8";
     
     my $rows = $self->{dbh}->selectall_arrayref("select id, domain from mirrors where tier = 2");
     if (scalar(@{$rows})) {

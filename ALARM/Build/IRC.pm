@@ -259,7 +259,7 @@ sub _cb_publicmsg {
                 }
             }
             case "!sync" {
-                if ($arg && ($arg eq '5' || $arg eq '6' || $arg eq '7')) {
+                if ($arg && ($arg eq '5' || $arg eq '6' || $arg eq '7' || $arg eq '8')) {
                     $q_mir->enqueue(['irc', 'queue', "armv$arg"]);
                     $self->privmsg("[sync] queued armv$arg mirror update");
                 } elsif ($arg && $arg eq 'os') {
@@ -269,6 +269,7 @@ sub _cb_publicmsg {
                     $q_mir->enqueue(['irc', 'queue', 'armv5']);
                     $q_mir->enqueue(['irc', 'queue', 'armv6']);
                     $q_mir->enqueue(['irc', 'queue', 'armv7']);
+                    $q_mir->enqueue(['irc', 'queue', 'armv8']);
                     $self->privmsg("[sync] queued mirror updates");
                 }
             }
@@ -279,6 +280,7 @@ sub _cb_publicmsg {
                         $q_db->enqueue(['irc', 'pkg_unfail', 'armv5', $pkg]);
                         $q_db->enqueue(['irc', 'pkg_unfail', 'armv6', $pkg]);
                         $q_db->enqueue(['irc', 'pkg_unfail', 'armv7', $pkg]);
+                        $q_db->enqueue(['irc', 'pkg_unfail', 'armv8', $pkg]);
                     } else {
                         $q_db->enqueue(['irc', 'pkg_unfail', $arch, $pkg]);
                     }
