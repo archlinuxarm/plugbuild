@@ -196,7 +196,7 @@ sub next_pkg {
                 (select repo, abs.package as pkg, pkgver, pkgrel, max(a2.done) as done, importance, highmem from abs
                 inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null $memstr)
                 left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep) left join $arch as a2 ON (a2.id = n.package)
-                group by d.id , name) as x group by pkg order by highmem desc, importance) as xx where cnt = sd or sd is null limit 1",
+                group by abs.id , name) as x group by pkg order by highmem desc, importance) as xx where cnt = sd or sd is null limit 1",
             undef, $self->{skip}->{$arch});
         if (!$pkg[0]) {
             $q_svc->enqueue(['db', 'next_pkg', $arch, $builder, { command => 'next', pkgbase => "FAIL" }]);
@@ -696,7 +696,7 @@ sub ready {
                 (select abs.package as pkg, max(a2.done) as done from abs
                 inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null)
                 left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep)
-                left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
+                left join $arch as a2 ON (a2.id = n.package) group by abs.id , name) as x
             group by pkg) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
         $ret .= "$arch: $next_pkg[0], ";
     }
@@ -724,7 +724,7 @@ sub ready_detail {
             (select repo, abs.package as pkg, max(a2.done) as done, importance from abs
             inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null)
             left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep)
-            left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
+            left join $arch as a2 ON (a2.id = n.package) group by abs.id , name) as x
         group by pkg order by importance) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
     
     # count number of packages and build return string
@@ -753,7 +753,7 @@ sub ready_list {
                 (select abs.package as pkg, max(a2.done) as done, highmem from abs
                 inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null)
                 left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep)
-                left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
+                left join $arch as a2 ON (a2.id = n.package) group by abs.id , name) as x
             group by pkg) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
         $ret{$arch}{total} = $row[0];
         $ret{$arch}{highmem} = $row[1] || 0;
@@ -1448,7 +1448,7 @@ sub _process {
                 (select abs.package as pkg, max(a2.done) as done from abs
                 inner join $arch as a ON (abs.id = a.id and a.done = 0 and a.fail = 0 and abs.skip & ? > 0 and abs.del = 0 and a.builder is null)
                 left join deps as d ON d.id = abs.id left join names as n ON (n.name = d.dep)
-                left join $arch as a2 ON (a2.id = n.package) group by d.id , name) as x
+                left join $arch as a2 ON (a2.id = n.package) group by abs.id , name) as x
             group by pkg) as xx where cnt = sd or sd is null", undef, $self->{skip}->{$arch});
         if ($ready > 0) {
             $q_svc->enqueue(['db', 'start', $arch, 0]);
