@@ -194,9 +194,6 @@ sub queue {
     my ($self, $arch) = @_;
     print "Mirror: queuing $arch\n";
     
-    # temporary: don't mirror v8
-    return if ($arch eq 'armv8');
-    
     # refuse to mirror an arch if it's already mirroring
     if ($self->{$arch}->{count} && $self->{$arch}->{count} > 0) {
         $q_irc->enqueue(['db', 'privmsg', "[queue] Refusing to mirror $arch - sync already in progress"]);
