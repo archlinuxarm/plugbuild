@@ -10,6 +10,7 @@ use Thread::Queue;
 use Thread::Semaphore;
 use Switch;
 use AnyEvent;
+use AnyEvent::Loop;
 use AnyEvent::TLS;
 use AnyEvent::Handle;
 use AnyEvent::Socket;

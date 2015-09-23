@@ -7,6 +7,7 @@ use strict;
 
 package ALARM::Build::IRC;
 use AnyEvent;
+use AnyEvent::Loop;
 use AnyEvent::IRC::Client;
 use Thread::Queue;
 use Thread::Semaphore;
