@@ -121,7 +121,6 @@ sub cb_read {
         # repo-add package file
         case "add" {
             system("repo-add -q $config{$arch}/$repo/$repo.db.tar.gz $config{$arch}/$repo/$arg");
-            system("repo-add -q -f $config{$arch}/$repo/$repo.files.tar.gz $config{$arch}/$repo/$arg");
         }
         
         # delete package file and signature from filesystem
